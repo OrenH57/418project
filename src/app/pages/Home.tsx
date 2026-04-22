@@ -94,22 +94,12 @@ const extraQuickActions = quickActions.filter((action) =>
 );
 
 const heroCopy = {
-  requester: {
-    badge: "UAlbany Campus Help",
-    title: "Need food, a ride, or quick help on a busy day?",
-    body: "Order what you need without making another full trip back to the Campus Center.",
-    subtext: "Made for the days when the walk, the wait, and the back-and-forth around campus start wearing you down.",
-    primaryLabel: "Order Food",
-    primaryPath: "/request?type=food&pickup=Starbucks",
-  },
-  courier: {
-    badge: "Courier And Discount Dollar Side",
-    title: "Want to help another student and make money doing it?",
-    body: "Take food runs, rides, and discount-dollar jobs when you have time between class, work, or the gym.",
-    subtext: "A quick pickup can help someone eat, get home, or survive finals week and still put money in your pocket.",
-    primaryLabel: "Open Courier Jobs",
-    primaryPath: "/driver-feed",
-  },
+  badge: "UAlbany Campus Help",
+  title: "Order food, rides, and campus help without the extra campus trip.",
+  body: "Skip another frustrating walk back to the Campus Center and have another student bring what you need where you already are.",
+  subtext: "Built for the long class days, rainy nights, and finals weeks when one more trip across campus feels like too much.",
+  primaryLabel: "Order Food",
+  primaryPath: "/request?type=food&pickup=Starbucks",
 };
 
 function getRequestIcon(serviceType: string) {
@@ -305,22 +295,22 @@ export function Home() {
         <section className="mb-6 rounded-[2rem] border border-[var(--border)] bg-white p-6 shadow-sm">
           <div className="mb-5 rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(92,29,54,0.97),rgba(92,29,54,0.84),rgba(199,162,74,0.72))] px-5 py-4 text-white">
             <p className="text-xs uppercase tracking-[0.28em] text-white/75">UAlbany Student Courier Network</p>
-            <h2 className="mt-2 text-2xl font-semibold">{heroCopy.requester.title}</h2>
+            <h2 className="mt-2 text-2xl font-semibold">{heroCopy.title}</h2>
           </div>
 
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="text-center md:text-left">
               <Badge className="mb-3" variant="secondary">
-                {heroCopy.requester.badge}
+                {heroCopy.badge}
               </Badge>
               <h1 className="text-3xl font-bold text-[var(--ink)]">
                 Hi, {user?.name.split(" ")[0]}
               </h1>
               <p className="mt-2 max-w-2xl text-[var(--muted)]">
-                {heroCopy.requester.body}
+                {heroCopy.body}
               </p>
               <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">
-                {heroCopy.requester.subtext}
+                {heroCopy.subtext}
               </p>
             </div>
             <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center md:items-end">
@@ -335,7 +325,7 @@ export function Home() {
                 onClick={() => navigate(heroCopy.requester.primaryPath)}
                 size="lg"
               >
-                {heroCopy.requester.primaryLabel}
+                {heroCopy.primaryLabel}
               </Button>
             </div>
           </div>
@@ -353,66 +343,71 @@ export function Home() {
               }}
               type="button"
             >
-              Want to make extra cash and do not have a car?
+              Want to make extra cash? No car needed.
             </button>
           </div>
         </section>
 
         <section className="mb-8">
-          <Card className="overflow-hidden border-none bg-[linear-gradient(120deg,rgba(92,29,54,0.98),rgba(122,47,96,0.92),rgba(199,162,74,0.86))] text-white shadow-sm">
-            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-white/75">Campus Center to Campus Life</p>
-                <h2 className="mt-2 text-2xl font-bold">UAlbany food delivery, rides, and support built for student life</h2>
-                <p className="mt-2 max-w-2xl text-sm text-white/85">
-                  Order from GET, skip another frustrating trip back to the Campus Center, and have someone bring it where you already are.
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <Card className="overflow-hidden border-none bg-[linear-gradient(120deg,rgba(92,29,54,0.98),rgba(122,47,96,0.92),rgba(199,162,74,0.86))] text-white shadow-sm">
+              <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-white/75">Campus Center to Campus Life</p>
+                  <h2 className="mt-2 text-2xl font-bold">Get what you need without the back-and-forth around campus.</h2>
+                  <p className="mt-2 max-w-2xl text-sm text-white/85">
+                    Food, rides, and small campus help from other UAlbany students who are already nearby.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
+                    <UtensilsCrossed className="h-4 w-4" />
+                    Campus Center food
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
+                    <MapPin className="h-4 w-4" />
+                    Real campus drop-offs
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
+                    <Shield className="h-4 w-4" />
+                    UAlbany-only access
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <Card className="border-[var(--border)]">
+                <CardContent className="p-5 text-center">
+                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-[var(--muted)]">Welcome Back</p>
+                  <h2 className="mt-2 text-2xl font-bold text-[var(--ink)]">Stop wasting time on the same long campus trip.</h2>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Order food, rides, and campus help in one place when you are busy, tired, or stuck far from the Campus Center.
+                  </p>
+                  <div className="mt-4 flex justify-center">
+                    <Button onClick={() => navigate("/request?type=food&pickup=Starbucks")} size="lg">
+                      Order Food
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="rounded-2xl bg-[var(--surface-tint)] px-5 py-4 text-center">
+                <p className="text-sm italic text-[var(--muted)]">
+                  "{appQuotes.requester}"
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                  <UtensilsCrossed className="h-4 w-4" />
-                  Campus Center food
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                  <MapPin className="h-4 w-4" />
-                  Real campus drop-offs
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                  <Shield className="h-4 w-4" />
-                  UAlbany-only access
-                </div>
+
+              <div className="flex justify-end">
+                <button
+                  className="text-xs font-medium text-[var(--muted)] underline-offset-4 transition hover:text-[var(--brand-accent)] hover:underline"
+                  onClick={() => navigate(KOSHER_ORDER_PATH)}
+                  type="button"
+                >
+                  Need kosher food delivery? Start a small East Cafe order.
+                </button>
               </div>
-            </CardContent>
-          </Card>
-          <div className="mt-2 flex justify-end">
-            <button
-              className="text-xs font-medium text-[var(--muted)] underline-offset-4 transition hover:text-[var(--brand-accent)] hover:underline"
-              onClick={() => navigate(KOSHER_ORDER_PATH)}
-              type="button"
-            >
-              Need kosher food delivery? Start a small East Cafe order.
-            </button>
-          </div>
-        </section>
-        <section className="mb-8">
-          <Card className="border-[var(--border)]">
-            <CardContent className="p-5 text-center">
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-[var(--muted)]">Welcome Back</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--ink)]">Order food, rides, and campus help in one place</h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                Stop making the same long trip back to the Campus Center when you are already tired, busy, or stuck on the other side of campus.
-              </p>
-              <div className="mt-4 flex justify-center">
-                <Button onClick={() => navigate("/request?type=food&pickup=Starbucks")} size="lg">
-                  Order Food
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <div className="mt-4 rounded-2xl bg-[var(--surface-tint)] px-5 py-4 text-center">
-            <p className="text-sm italic text-[var(--muted)]">
-              "{appQuotes.requester}"
-            </p>
+            </div>
           </div>
         </section>
 

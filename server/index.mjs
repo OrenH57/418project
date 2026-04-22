@@ -89,7 +89,10 @@ const seedData = {
       email: "ariana.green@albany.edu",
       phone: "518-555-0141",
       password: hashPassword("demo123"),
+<<<<<<< ours
       authProvider: "password",
+=======
+>>>>>>> theirs
       role: "requester",
       courierMode: false,
       ualbanyIdUploaded: false,
@@ -108,7 +111,10 @@ const seedData = {
       email: "marcus.hall@albany.edu",
       phone: "518-555-0188",
       password: hashPassword("demo123"),
+<<<<<<< ours
       authProvider: "password",
+=======
+>>>>>>> theirs
       role: "courier",
       courierMode: true,
       ualbanyIdUploaded: true,
@@ -197,10 +203,13 @@ async function readData() {
       user.phone = "";
       changed = true;
     }
+<<<<<<< ours
     if (user.authProvider !== "outlook" && user.authProvider !== "password") {
       user.authProvider = "password";
       changed = true;
     }
+=======
+>>>>>>> theirs
     if (typeof user.ualbanyIdUploaded !== "boolean") {
       user.ualbanyIdUploaded = user.email === "marcus.hall@albany.edu";
       changed = true;
@@ -300,7 +309,10 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     phone: user.phone || "",
+<<<<<<< ours
     authProvider: user.authProvider === "outlook" ? "outlook" : "password",
+=======
+>>>>>>> theirs
     role: user.role,
     courierMode: user.courierMode,
     ualbanyIdUploaded: Boolean(user.ualbanyIdUploaded),
@@ -478,7 +490,10 @@ const server = http.createServer(async (request, response) => {
         email,
         phone,
         password: hashPassword(password),
+<<<<<<< ours
         authProvider: "password",
+=======
+>>>>>>> theirs
         role,
         courierMode: role === "courier",
         ualbanyIdUploaded: Boolean(ualbanyIdImage),
@@ -500,6 +515,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+<<<<<<< ours
     if (request.method === "POST" && url.pathname === "/api/auth/outlook") {
       const body = await readBody(request);
       const email = String(body.email || "").trim().toLowerCase();
@@ -575,6 +591,8 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+=======
+>>>>>>> theirs
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       const body = await readBody(request);
       const email = String(body.email || "").trim().toLowerCase();
@@ -582,11 +600,14 @@ const server = http.createServer(async (request, response) => {
       const data = await readData();
       const user = data.users.find((entry) => entry.email === email);
 
+<<<<<<< ours
       if (user?.authProvider === "outlook") {
         sendJson(response, 400, { error: "This account uses Outlook. Use the Outlook button to continue." });
         return;
       }
 
+=======
+>>>>>>> theirs
       if (!user || !verifyPassword(password, user.password)) {
         sendJson(response, 401, { error: "Invalid email or password." });
         return;

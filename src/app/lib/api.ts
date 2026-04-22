@@ -9,7 +9,6 @@ export type User = {
   name: string;
   email: string;
   phone: string;
-  authProvider?: "password" | "outlook";
   role: "requester" | "courier";
   courierMode: boolean;
   ualbanyIdUploaded: boolean;
@@ -85,18 +84,6 @@ export const api = {
     ualbanyIdImage?: string;
   }) {
     return request<{ token: string; user: User }>("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
-  outlookAuth(input: {
-    name?: string;
-    email: string;
-    phone?: string;
-    role: "requester" | "courier";
-    ualbanyIdImage?: string;
-  }) {
-    return request<{ token: string; user: User }>("/auth/outlook", {
       method: "POST",
       body: JSON.stringify(input),
     });

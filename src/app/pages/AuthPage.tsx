@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus, Mail } from "lucide-react";
+import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -28,7 +28,7 @@ const entryOptionCopy = {
 
 export function AuthPage() {
   const navigate = useNavigate();
-  const { user, login, signup, outlookAuth } = useAuth();
+  const { user, login, signup } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -112,52 +112,6 @@ export function AuthPage() {
     }
   }
 
-  async function handleOutlookAuth() {
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedName = name.trim();
-
-    try {
-      setBusy(true);
-
-      if (!normalizedEmail) {
-        toast.error("Enter your UAlbany Outlook email to continue.");
-        return;
-      }
-
-      if (mode === "signup") {
-        if (!normalizedName) {
-          toast.error("Add your full name before continuing with Outlook.");
-          return;
-        }
-
-        if (!phone.trim()) {
-          toast.error("Add your phone number before continuing with Outlook.");
-          return;
-        }
-      }
-
-      if (entryView === "courier" && !ualbanyIdImage) {
-        toast.error("Upload a photo of your UAlbany ID before opening the courier side.");
-        return;
-      }
-
-      await outlookAuth({
-        name: normalizedName || undefined,
-        email: normalizedEmail,
-        phone: phone.trim() || undefined,
-        role: entryView,
-        ualbanyIdImage: entryView === "courier" ? ualbanyIdImage : undefined,
-      });
-      setStoredView(entryView);
-      toast.success(mode === "login" ? "Signed in with Outlook." : "Outlook account connected.");
-      navigate(getDefaultPath(entryView), { replace: true });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Outlook authentication failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-[var(--page-bg)] px-4 py-8">
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -208,28 +162,6 @@ export function AuthPage() {
             <CardDescription>
               Explore first if you want. Only sign in when you are ready to place an order or take jobs.
             </CardDescription>
-            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-              <Button
-                className="w-full"
-                disabled={busy}
-                onClick={() => {
-                  void handleOutlookAuth();
-                }}
-                size="lg"
-                type="button"
-                variant="secondary"
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                {busy
-                  ? "Connecting..."
-                  : mode === "login"
-                    ? "Continue with UAlbany Outlook"
-                    : "Sign Up with UAlbany Outlook"}
-              </Button>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Prototype flow: this simulates a campus Microsoft account and keeps the app&apos;s local JSON backend.
-              </p>
-            </div>
             <p className="mt-2 text-sm text-[var(--muted)]">
               <Link className="text-[var(--brand-accent)] underline-offset-4 hover:underline" to="/">
                 Back to the product overview
@@ -375,9 +307,6 @@ export function AuthPage() {
                 placeholder="you@albany.edu"
                 value={email}
               />
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Use your UAlbany Outlook address here for either password login or the Outlook button above.
-              </p>
             </div>
 
             <div>

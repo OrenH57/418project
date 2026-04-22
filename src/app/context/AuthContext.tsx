@@ -28,13 +28,6 @@ type AuthContextValue = {
     role: "requester" | "courier";
     ualbanyIdImage?: string;
   }) => Promise<void>;
-  outlookAuth: (input: {
-    name?: string;
-    email: string;
-    phone?: string;
-    role: "requester" | "courier";
-    ualbanyIdImage?: string;
-  }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateLocalUser: (user: User) => void;
@@ -95,13 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signup(input) {
         const response = await api.signup(input);
-        localStorage.setItem(TOKEN_KEY, response.token);
-        localStorage.setItem(USER_KEY, JSON.stringify(response.user));
-        setToken(response.token);
-        setUser(response.user);
-      },
-      async outlookAuth(input) {
-        const response = await api.outlookAuth(input);
         localStorage.setItem(TOKEN_KEY, response.token);
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setToken(response.token);
