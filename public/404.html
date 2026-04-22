@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0;url=./" />
+    <title>CampusConnect Redirect</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var path = location.pathname;
+        var repoBase = path.split("/").slice(0, 2).join("/") || "";
+        var appPath = path.replace(repoBase, "") || "/";
+        sessionStorage.setItem(
+          "campusconnect-gh-redirect",
+          JSON.stringify({
+            path: repoBase + appPath,
+            search: location.search,
+            hash: location.hash
+          })
+        );
+        location.replace(repoBase + "/");
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --brand-maroon: #592b63;
+  --brand-maroon-deep: #43204b;
+  --brand-accent: #74407b;
+  --brand-gold: #c7a24a;
+  --gold-soft: #fbf2db;
+  --page-bg: #f8f4ef;
+  --surface: #fffdf9;
+  --surface-tint: #fff8ef;
+  --ink: #2b1d22;
+  --muted: #6f5d64;
+  --border: #e7d7c8;
+  --border-strong: #b68ea0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(230, 184, 76, 0.18), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(89, 43, 99, 0.11), transparent 26%),
+    var(--page-bg);
+  color: var(--ink);
+  font-family:
+    "Segoe UI", "Trebuchet MS", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.ua-banner {
+  background:
+    linear-gradient(90deg, rgba(89, 43, 99, 0.98), rgba(116, 64, 123, 0.95)),
+    var(--brand-maroon);
+}
