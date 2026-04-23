@@ -2,7 +2,7 @@
 // Typed frontend API client and shared record types.
 // Pages should call backend routes through this file instead of building fetch calls inline.
 
-const API_BASE = "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 
 export type User = {
   id: string;
@@ -55,6 +55,20 @@ export type MessageRecord = {
   text: string;
   time: string;
   mine: boolean;
+};
+
+export type RatingSummary = {
+  requestId: string;
+  targetUser: { id: string; name: string } | null;
+  canRate: boolean;
+  existingRating: {
+    requestId: string;
+    authorUserId: string;
+    targetUserId: string;
+    rating: number;
+    comment: string;
+    createdAt: string;
+  } | null;
 };
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -210,6 +224,19 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ requestId, paymentState }),
+      },
+      token,
+    );
+  },
+  getRatingSummary(token: string, requestId: string) {
+    return request<RatingSummary>(`/ratings/${requestId}`, {}, token);
+  },
+  submitRating(token: string, requestId: string, input: { rating: number; comment: string }) {
+    return request<{ ok: true; targetUser: { id: string; name: string; rating: number } }>(
+      `/ratings/${requestId}`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
       },
       token,
     );

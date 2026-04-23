@@ -9,11 +9,10 @@ import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
-  APP_URL,
-  AZURE_CLIENT_ID,
-  AZURE_TENANT_ID,
   DISCOUNT_RATE,
   MIN_PAYMENT_OFFER,
+  getAzureClientId,
+  getAzureTenantId,
   loadEnv,
   ualbanyRestaurants,
 } from "./lib/config.mjs";
@@ -55,19 +54,22 @@ function isCampusEmail(email) {
 }
 
 async function verifyMicrosoftIdToken(idToken) {
-  if (!AZURE_CLIENT_ID || !AZURE_TENANT_ID) {
+  const azureClientId = getAzureClientId();
+  const azureTenantId = getAzureTenantId();
+
+  if (!azureClientId || !azureTenantId) {
     throw new Error("Microsoft sign-in is not configured on the backend yet.");
   }
 
   const { payload } = await jwtVerify(idToken, microsoftJwks, {
-    audience: AZURE_CLIENT_ID,
+    audience: azureClientId,
     issuer: [
-      `https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0`,
-      `https://sts.windows.net/${AZURE_TENANT_ID}/`,
+      `https://login.microsoftonline.com/${azureTenantId}/v2.0`,
+      `https://sts.windows.net/${azureTenantId}/`,
     ],
   });
 
-  if (payload.tid !== AZURE_TENANT_ID) {
+  if (payload.tid !== azureTenantId) {
     throw new Error("Only University at Albany Microsoft accounts are allowed.");
   }
 
@@ -317,6 +319,11 @@ async function readData() {
     }
   }
 
+  if (!Array.isArray(data.ratings)) {
+    data.ratings = [];
+    changed = true;
+  }
+
   if (changed) {
     await writeData(data);
   }
@@ -361,6 +368,10 @@ function sanitizeUser(user) {
     completedJobs: user.completedJobs,
     earnings: user.earnings,
   };
+}
+
+function canAccessRequest(userId, requestRecord) {
+  return requestRecord.userId === userId || requestRecord.acceptedBy === userId;
 }
 
 function getToken(request) {
@@ -770,6 +781,21 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.userId === auth.user.id) {
+        sendJson(response, 400, { error: "You cannot accept your own request." });
+        return;
+      }
+
+      if (requestRecord.status === "accepted" && requestRecord.acceptedBy && requestRecord.acceptedBy !== auth.user.id) {
+        sendJson(response, 409, { error: "This request was already accepted by another courier." });
+        return;
+      }
+
+      if (requestRecord.status !== "open" && requestRecord.acceptedBy !== auth.user.id) {
+        sendJson(response, 400, { error: "This request is no longer open." });
+        return;
+      }
+
       requestRecord.status = "accepted";
       requestRecord.acceptedBy = auth.user.id;
       auth.data.messages[requestId] = auth.data.messages[requestId] || [];
@@ -834,6 +860,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (!canAccessRequest(auth.user.id, requestRecord)) {
+        sendJson(response, 403, { error: "You do not have access to this conversation." });
+        return;
+      }
+
       sendJson(response, 200, {
         request: decorateRequest(requestRecord, auth.data),
         messages: (auth.data.messages[requestId] || []).map((message) => ({
@@ -853,8 +884,19 @@ const server = http.createServer(async (request, response) => {
       if (!auth) return;
 
       const requestId = url.pathname.split("/")[3];
+      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
       const body = await readBody(request);
       const text = String(body.text || "").trim();
+
+      if (!requestRecord) {
+        sendJson(response, 404, { error: "Conversation not found." });
+        return;
+      }
+
+      if (!canAccessRequest(auth.user.id, requestRecord)) {
+        sendJson(response, 403, { error: "You do not have access to this conversation." });
+        return;
+      }
 
       if (!text) {
         sendJson(response, 400, { error: "Message text is required." });
@@ -871,6 +913,110 @@ const server = http.createServer(async (request, response) => {
       });
       await writeData(auth.data);
       sendJson(response, 201, { ok: true });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/api/ratings/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+
+      const requestId = url.pathname.split("/")[3];
+      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
+
+      if (!requestRecord) {
+        sendJson(response, 404, { error: "Request not found." });
+        return;
+      }
+
+      if (!canAccessRequest(auth.user.id, requestRecord)) {
+        sendJson(response, 403, { error: "You do not have access to this rating flow." });
+        return;
+      }
+
+      const isRequester = requestRecord.userId === auth.user.id;
+      const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
+      const targetUser = targetUserId ? auth.data.users.find((entry) => entry.id === targetUserId) ?? null : null;
+      const existingRating =
+        auth.data.ratings.find((entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id) ?? null;
+
+      sendJson(response, 200, {
+        canRate: Boolean(targetUser),
+        requestId,
+        targetUser: targetUser ? { id: targetUser.id, name: targetUser.name } : null,
+        existingRating,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname.startsWith("/api/ratings/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+
+      const requestId = url.pathname.split("/")[3];
+      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
+
+      if (!requestRecord) {
+        sendJson(response, 404, { error: "Request not found." });
+        return;
+      }
+
+      if (!canAccessRequest(auth.user.id, requestRecord)) {
+        sendJson(response, 403, { error: "You do not have access to this rating flow." });
+        return;
+      }
+
+      const body = await readBody(request);
+      const ratingValue = Number(body.rating);
+      const comment = String(body.comment || "").trim();
+      const isRequester = requestRecord.userId === auth.user.id;
+      const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
+
+      if (!targetUserId) {
+        sendJson(response, 400, { error: "A courier must accept the request before you can leave a rating." });
+        return;
+      }
+
+      if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5) {
+        sendJson(response, 400, { error: "Ratings must be a whole number between 1 and 5." });
+        return;
+      }
+
+      const targetUser = auth.data.users.find((entry) => entry.id === targetUserId);
+
+      if (!targetUser) {
+        sendJson(response, 404, { error: "The person you are trying to rate was not found." });
+        return;
+      }
+
+      const ratingRecord = {
+        requestId,
+        authorUserId: auth.user.id,
+        targetUserId,
+        rating: ratingValue,
+        comment,
+        createdAt: new Date().toISOString(),
+      };
+      const existingIndex = auth.data.ratings.findIndex(
+        (entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id,
+      );
+
+      if (existingIndex >= 0) {
+        auth.data.ratings[existingIndex] = ratingRecord;
+      } else {
+        auth.data.ratings.push(ratingRecord);
+      }
+
+      const userRatings = auth.data.ratings.filter((entry) => entry.targetUserId === targetUserId);
+      const averageRating =
+        userRatings.reduce((total, entry) => total + entry.rating, 0) / userRatings.length;
+      targetUser.rating = Number(averageRating.toFixed(1));
+
+      await writeData(auth.data);
+      sendJson(response, 201, {
+        ok: true,
+        rating: ratingRecord,
+        targetUser: { id: targetUser.id, name: targetUser.name, rating: targetUser.rating },
+      });
       return;
     }
 
@@ -1041,6 +1187,9 @@ const server = http.createServer(async (request, response) => {
 
 await ensureDataFile();
 
-server.listen(4174, "127.0.0.1", () => {
-  console.log("CampusConnect API running at http://127.0.0.1:4174 (local persistent fallback)");
+const port = Number(process.env.PORT || 4174);
+const host = process.env.HOST || "0.0.0.0";
+
+server.listen(port, host, () => {
+  console.log(`CampusConnect API running at http://${host}:${port} (local persistent fallback)`);
 });
