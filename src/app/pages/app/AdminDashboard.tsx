@@ -3,8 +3,8 @@
 // Shows high-level moderation and platform status cards for milestone/demo use.
 
 import { Activity, AlertTriangle, ChartNoAxesColumn, Users } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
 
 const flaggedItems = [
   { id: "R-102", reason: "Late pickup dispute", status: "Reviewing" },

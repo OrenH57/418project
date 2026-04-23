@@ -5,14 +5,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Send, Phone, Shield, CreditCard, BellRing, CheckCircle2, Clock3 } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Avatar, AvatarFallback } from "../components/ui/avatar";
-import { Badge } from "../components/ui/badge";
-import { Input } from "../components/ui/input";
-import { api, type MessageRecord, type RequestRecord } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
+import { Input } from "../../components/ui/input";
+import { api, type MessageRecord, type RequestRecord } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
 
 export function Messaging() {
   const navigate = useNavigate();
@@ -23,6 +23,9 @@ export function Messaging() {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [requestRecord, setRequestRecord] = useState<RequestRecord | null>(null);
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const hasProcessedPaymentRedirect = useRef(false);
 
   const title = useMemo(() => {
@@ -34,11 +37,17 @@ export function Messaging() {
     if (!token || !requestId) return;
 
     try {
+      setIsLoadingMessages(true);
+      setLoadError("");
       const response = await api.getMessages(token, requestId);
       setMessages(response.messages);
       setRequestRecord(response.request);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not load messages.");
+      const message = error instanceof Error ? error.message : "Could not load messages.";
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setIsLoadingMessages(false);
     }
   }
 
@@ -75,11 +84,14 @@ export function Messaging() {
     if (!token || !requestId || !draft.trim()) return;
 
     try {
+      setIsSending(true);
       await api.sendMessage(token, requestId, draft.trim());
       setDraft("");
       await loadMessages();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not send message.");
+    } finally {
+      setIsSending(false);
     }
   }
 
@@ -286,15 +298,33 @@ export function Messaging() {
                 <h1 className="font-semibold text-[var(--ink)]">{title}</h1>
                 <p className="text-sm text-[var(--muted)]">Coordinate pickup, delivery, and ETA updates.</p>
               </div>
-              <Button variant="outline">
+              <Button disabled variant="outline">
                 <Phone className="mr-2 h-4 w-4" />
-                Call
+                Call Soon
               </Button>
             </div>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-4 p-6">
             <div className="flex-1 space-y-4 overflow-y-auto">
-              {messages.map((message) => (
+              {loadError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert">
+                  {loadError}
+                </div>
+              ) : null}
+
+              {isLoadingMessages ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-white px-4 py-6 text-center text-sm text-[var(--muted)]">
+                  Loading conversation...
+                </div>
+              ) : null}
+
+              {!isLoadingMessages && !loadError && messages.length === 0 ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-white px-4 py-6 text-center text-sm text-[var(--muted)]">
+                  No messages yet. Send the first update to coordinate the handoff.
+                </div>
+              ) : null}
+
+              {!isLoadingMessages && !loadError ? messages.map((message) => (
                 <div key={message.id} className={`flex ${message.mine ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${
@@ -310,7 +340,7 @@ export function Messaging() {
                     </p>
                   </div>
                 </div>
-              ))}
+              )) : null}
             </div>
 
             <form
@@ -321,12 +351,14 @@ export function Messaging() {
               }}
             >
               <Input
+                aria-label="Message input"
                 className="h-12"
+                disabled={Boolean(loadError) || isSending}
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="Type your message"
                 value={draft}
               />
-              <Button className="h-12 px-5" type="submit">
+              <Button className="h-12 px-5" disabled={!draft.trim() || Boolean(loadError) || isSending} type="submit">
                 <Send className="h-4 w-4" />
               </Button>
             </form>

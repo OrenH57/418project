@@ -3,7 +3,7 @@
 // Waits for auth to load, then either renders the protected layout or redirects to login.
 
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 export function ProtectedRoute() {
   const { loading, user } = useAuth();

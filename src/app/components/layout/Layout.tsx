@@ -5,10 +5,10 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Bike, CircleHelp, LogOut, UserRound } from "lucide-react";
 import { QuickRequestButton } from "./QuickRequestButton";
-import { useAuth } from "../context/AuthContext";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { getDefaultPath, getStoredView } from "../lib/viewMode";
+import { useAuth } from "../../context/AuthContext";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { getDefaultPath, getStoredView } from "../../lib/viewMode";
 
 export function Layout() {
   const location = useLocation();
@@ -44,10 +44,15 @@ export function Layout() {
             </div>
           </button>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button className="rounded-full px-3" onClick={() => navigate("/profile")} size="sm" variant="ghost">
-              <UserRound className="mr-2 h-4 w-4" />
-              Profile
+          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 sm:flex sm:flex-wrap">
+            <Button
+              className="min-w-0 justify-center rounded-full px-3 sm:justify-start"
+              onClick={() => navigate("/profile")}
+              size="sm"
+              variant="ghost"
+            >
+              <UserRound className="h-4 w-4 sm:mr-2" />
+              <span className="sr-only sm:not-sr-only">Profile</span>
             </Button>
             <Button
               aria-label="Help and info"
@@ -59,7 +64,7 @@ export function Layout() {
               <CircleHelp className="h-4 w-4" />
             </Button>
             {user ? (
-              <Badge className="hidden sm:inline-flex" variant="secondary">
+              <Badge className="col-span-3 justify-center sm:col-auto sm:inline-flex" variant="secondary">
                 {preferredView === "courier" ? "Courier" : "Customer"}
               </Badge>
             ) : null}

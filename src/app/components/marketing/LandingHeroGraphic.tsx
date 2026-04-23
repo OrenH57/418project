@@ -36,17 +36,15 @@ export function LandingHeroGraphic() {
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4">
-          {restaurantImages.map((image) => (
+          {restaurantImages.map((image, index) => (
             <div
               key={image.name}
-              className="overflow-hidden rounded-[0.95rem] border border-white/80 bg-white shadow-sm sm:rounded-[1.2rem]"
+              className={`overflow-hidden rounded-[0.95rem] border border-white/80 bg-white shadow-sm sm:rounded-[1.2rem] ${
+                index >= 4 ? "hidden sm:block" : ""
+              }`}
             >
               <div className="aspect-[4/3] bg-white">
-                <img
-                  alt={image.name}
-                  className="h-full w-full object-cover"
-                  src={image.src}
-                />
+                <img alt={image.name} className="h-full w-full object-cover" src={image.src} />
               </div>
               <div className="border-t border-[var(--border)] px-2 py-1.5 text-center text-[10px] font-medium text-[var(--ink)] sm:px-2.5 sm:py-1.5 sm:text-xs">
                 {image.name}
@@ -57,14 +55,12 @@ export function LandingHeroGraphic() {
 
         <div className="mt-2.5 rounded-[1rem] border border-white/90 bg-white/92 p-3 shadow-lg backdrop-blur sm:absolute sm:right-3 sm:bottom-3 sm:mt-0 sm:max-w-[220px] sm:rounded-[1.35rem] sm:p-3.5 sm:shadow-xl">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-xl text-white shadow-sm sm:h-14 sm:w-14 sm:text-2xl">
-              🚲
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-sm font-semibold text-white shadow-sm sm:h-14 sm:w-14">
+              Bike
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] sm:text-xs">Pickup to handoff</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                Student courier on the way
-              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Student courier on the way</p>
             </div>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)] sm:mt-2.5 sm:text-sm">

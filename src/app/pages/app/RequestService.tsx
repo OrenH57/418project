@@ -6,15 +6,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, DollarSign, ImagePlus } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Textarea } from "../components/ui/textarea";
-import { toast } from "../components/ui/sonner";
-import { api } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Textarea } from "../../components/ui/textarea";
+import { toast } from "../../components/ui/sonner";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 import {
   MIN_PAYMENT_OFFER,
   serviceTypes,
@@ -24,8 +24,8 @@ import {
   buildHousingDestination,
   getFloorOptions,
   getMeetSpotOptions,
-} from "../lib/campusConfig";
-import { openGetMobile } from "../lib/getMobile";
+} from "../../lib/campusConfig";
+import { openGetMobile } from "../../lib/getMobile";
 
 type ServiceButtonProps = {
   active: boolean;
@@ -79,14 +79,17 @@ export function RequestService() {
   const [searchParams] = useSearchParams();
   const typeFromUrl = searchParams.get("type") || "food";
   const pickupFromUrl = searchParams.get("pickup") || "";
+  const destinationFromUrl = searchParams.get("destination") || "";
+  const paymentFromUrl = searchParams.get("payment") || "";
+  const notesFromUrl = searchParams.get("notes") || "";
 
   const [serviceType, setServiceType] = useState(typeFromUrl);
   const [pickup, setPickup] = useState(pickupFromUrl);
-  const [destination, setDestination] = useState("");
+  const [destination, setDestination] = useState(destinationFromUrl);
   const [timeMode, setTimeMode] = useState<"now" | "schedule">("now");
   const [time, setTime] = useState("");
-  const [payment, setPayment] = useState("");
-  const [notes, setNotes] = useState("");
+  const [payment, setPayment] = useState(paymentFromUrl);
+  const [notes, setNotes] = useState(notesFromUrl);
   const [orderNumber, setOrderNumber] = useState("");
   const [orderItems, setOrderItems] = useState("");
   const [orderEta, setOrderEta] = useState("");
@@ -98,6 +101,8 @@ export function RequestService() {
   const [housingFloor, setHousingFloor] = useState("");
   const [housingDetails, setHousingDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState("");
 
   const needsDestination = serviceType === "ride" || serviceType === "food";
   const helperCopy = useMemo(() => getHelperCopy(serviceType), [serviceType]);
@@ -146,7 +151,17 @@ export function RequestService() {
       }
     }
 
-    void loadBootstrap();
+    void (async () => {
+      try {
+        setIsBootstrapping(true);
+        setBootstrapError("");
+        await loadBootstrap();
+      } catch (error) {
+        setBootstrapError(error instanceof Error ? error.message : "Could not load request setup.");
+      } finally {
+        setIsBootstrapping(false);
+      }
+    })();
   }, [isFood, pickupFromUrl, token]);
 
   useEffect(() => {
@@ -196,8 +211,9 @@ export function RequestService() {
     if (!token) return;
 
     const finalTime = timeMode === "now" ? "Now" : time.trim();
+    const trimmedDestination = destination.trim();
 
-    if (!serviceType || !pickup || !payment || (needsDestination && !destination)) {
+    if (!serviceType || !pickup || !payment || (needsDestination && !trimmedDestination)) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -214,6 +230,11 @@ export function RequestService() {
 
     if (serviceType === "food" && !housingArea) {
       toast.error("Choose the residential area for delivery.");
+      return;
+    }
+
+    if (serviceType === "food" && !hasOrderedInGet) {
+      toast.error("Order in GET first, then come back here to request delivery.");
       return;
     }
 
@@ -236,7 +257,7 @@ export function RequestService() {
       const response = await api.createRequest(token, {
         serviceType,
         pickup,
-        destination,
+        destination: trimmedDestination,
         time: finalTime,
         payment,
         notes: requestNotes,
@@ -275,6 +296,12 @@ export function RequestService() {
           </CardHeader>
           <CardContent>
             <form className="space-y-6" onSubmit={handleSubmit}>
+              {bootstrapError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert">
+                  {bootstrapError}
+                </div>
+              ) : null}
+
               <SectionCard
                 description="Start by picking what you need."
                 title="1. What do you need?"
@@ -294,16 +321,20 @@ export function RequestService() {
 
               {isFood ? (
                 <SectionCard
-                  description="First order in GET, then come back here to request delivery."
+                  description="CampusConnect handles the delivery request. Your actual food order still happens in GET first."
                   title="2. Order details"
                 >
                   <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-                    <p className="font-medium text-[var(--ink)]">Simple food flow</p>
+                    <p className="font-medium text-[var(--ink)]">Food delivery flow</p>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      1. Open GET. 2. Place the order. 3. Take a screenshot of the confirmation. 4. Come back here and finish the delivery request.
+                      1. Order food in GET. 2. Save the confirmation screenshot. 3. Come back here to request delivery. 4. Pay and track updates in CampusConnect.
                     </p>
+                    <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs text-[var(--muted)]">
+                      CampusConnect does not place the food order for you. It shares pickup and drop-off details with another student courier.
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
+                        disabled={isBootstrapping}
                         onClick={() => {
                           openGetMobile();
                           setHasOrderedInGet(true);
@@ -311,14 +342,14 @@ export function RequestService() {
                         size="sm"
                         variant="secondary"
                       >
-                        Open GET First
+                        Order In GET First
                       </Button>
                       <Button onClick={() => setHasOrderedInGet(true)} size="sm" variant="outline">
-                        I Already Ordered
+                        I Already Ordered In GET
                       </Button>
                     </div>
                     <p className="mt-2 text-xs text-[var(--muted)]">
-                      GET opens in a new tab so this page stays here. The screenshot is the easiest way to show the courier what to pick up.
+                      GET opens in a new tab so this page stays here. The screenshot is the fastest way to show the courier exactly what to pick up.
                     </p>
                   </div>
 
@@ -352,7 +383,7 @@ export function RequestService() {
                         <div>
                           <Label htmlFor="pickup">Restaurant *</Label>
                           <Select onValueChange={setPickup} value={pickup}>
-                            <SelectTrigger id="pickup">
+                            <SelectTrigger disabled={isBootstrapping || restaurants.length === 0} id="pickup">
                               <SelectValue placeholder="Select a Campus Center restaurant" />
                             </SelectTrigger>
                             <SelectContent>
@@ -363,6 +394,7 @@ export function RequestService() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {isBootstrapping ? <p className="mt-1 text-xs text-[var(--muted)]">Loading restaurant list...</p> : null}
                         </div>
 
                         <div>
@@ -608,8 +640,8 @@ export function RequestService() {
                 </div>
               </SectionCard>
 
-              <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
-                {isSubmitting ? "Opening Stripe..." : isFood ? "Place Order And Pay" : "Place My Order"}
+              <Button className="w-full" disabled={isSubmitting || isBootstrapping} size="lg" type="submit">
+                {isBootstrapping ? "Loading form..." : isSubmitting ? "Opening Stripe..." : isFood ? "Place Order And Pay" : "Place My Order"}
               </Button>
             </form>
           </CardContent>

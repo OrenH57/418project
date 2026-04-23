@@ -5,12 +5,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Star } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Textarea } from "../components/ui/textarea";
-import { api } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Textarea } from "../../components/ui/textarea";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
 
 export function Ratings() {
   const navigate = useNavigate();

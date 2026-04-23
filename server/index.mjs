@@ -3,8 +3,8 @@
 // Handles auth, requests, messages, profile updates, verification, and optional Stripe checkout.
 
 import http from "node:http";
-import fs from "node:fs/promises";
 import path from "node:path";
+import { MongoClient } from "mongodb";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -20,12 +20,27 @@ import { createStripeCheckoutSession } from "./lib/payments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dataDir = path.join(__dirname, "data");
-const dataFile = path.join(dataDir, "app-data.json");
 const rootDir = path.resolve(__dirname, "..");
 
 await loadEnv();
+const mongoUri = process.env.MONGODB_URI;
+
+if (!mongoUri) {
+  throw new Error("MONGODB_URI is missing from .env");
+}
+
+const client = new MongoClient(mongoUri);
+await client.connect();
+
+const db = client.db("campusconnect");
+
+const usersCollection = db.collection("users");
+const sessionsCollection = db.collection("sessions");
+const requestsCollection = db.collection("requests");
+const ratingsCollection = db.collection("ratings");
+const messagesCollection = db.collection("messages");
 const microsoftJwks = createRemoteJWKSet(new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"));
+const MAX_ACTIVE_REQUESTS_PER_USER = 3;
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -103,7 +118,7 @@ const seedData = {
       foodSafetyVerified: false,
       notificationsEnabled: false,
       courierOnline: false,
-      bio: "Late-night study group organizer who relies on campus center pickup runs.",
+      bio: "Student who orders from the dorm, library, or a late-night study session when leaving campus spots is a hassle.",
       rating: 4.8,
       completedJobs: 12,
       earnings: 0,
@@ -122,7 +137,7 @@ const seedData = {
       foodSafetyVerified: true,
       notificationsEnabled: true,
       courierOnline: true,
-      bio: "Student courier covering Dutch and State Quads between classes.",
+      bio: "Student courier covering dorms, libraries, and late-night campus runs when weather or darkness makes walking less appealing.",
       rating: 4.9,
       completedJobs: 34,
       earnings: 186,
@@ -173,23 +188,95 @@ const seedData = {
   restaurants: ualbanyRestaurants,
 };
 
-async function ensureDataFile() {
-  await fs.mkdir(dataDir, { recursive: true });
+const demoUsers = seedData.users.map((user) => ({
+  ...user,
+}));
 
-  try {
-    await fs.access(dataFile);
-  } catch {
-    await fs.writeFile(dataFile, JSON.stringify(seedData, null, 2));
+async function ensureDemoUsers() {
+  for (const user of demoUsers) {
+    await usersCollection.updateOne(
+      { email: user.email },
+      {
+        $set: {
+          name: user.name,
+          phone: user.phone,
+          password: user.password,
+          authProvider: "password",
+          role: user.role,
+          courierMode: user.courierMode,
+          ualbanyIdUploaded: user.ualbanyIdUploaded,
+          ualbanyIdImage: user.ualbanyIdImage,
+          foodSafetyVerified: user.foodSafetyVerified,
+          notificationsEnabled: user.notificationsEnabled,
+          courierOnline: user.courierOnline,
+          bio: user.bio,
+          rating: user.rating,
+          completedJobs: user.completedJobs,
+          earnings: user.earnings,
+        },
+        $setOnInsert: {
+          id: user.id,
+        },
+      },
+      { upsert: true },
+    );
+  }
+}
+
+async function ensureSeedData() {
+  await ensureDemoUsers();
+
+  const requestCount = await requestsCollection.countDocuments();
+  if (requestCount > 0) {
+    return;
+  }
+
+  if (seedData.sessions?.length) {
+    await sessionsCollection.insertMany(seedData.sessions);
+  }
+
+  if (seedData.requests?.length) {
+    await requestsCollection.insertMany(seedData.requests);
+  }
+
+  if (seedData.ratings?.length) {
+    await ratingsCollection.insertMany(seedData.ratings);
+  }
+
+  const messageDocs = Object.entries(seedData.messages || {}).map(([requestId, messages]) => ({
+    requestId,
+    messages,
+  }));
+
+  if (messageDocs.length) {
+    await messagesCollection.insertMany(messageDocs);
   }
 }
 
 async function readData() {
-  await ensureDataFile();
-  const raw = await fs.readFile(dataFile, "utf8");
-  const data = JSON.parse(raw);
+  const users = await usersCollection.find({}).toArray();
+  const sessions = await sessionsCollection.find({}).toArray();
+  const requests = await requestsCollection.find({}).toArray();
+  const ratings = await ratingsCollection.find({}).toArray();
+  const messageDocs = await messagesCollection.find({}).toArray();
+
+  const messages = {};
+  for (const doc of messageDocs) {
+    messages[doc.requestId] = Array.isArray(doc.messages) ? doc.messages : [];
+  }
+
+  const data = {
+    users,
+    sessions,
+    requests,
+    ratings,
+    messages,
+    restaurants: ualbanyRestaurants,
+  };
 
   let changed = false;
   const normalizedRestaurants = JSON.stringify(ualbanyRestaurants);
+
   for (const user of data.users) {
     if (
       (user.email === "ariana.green@albany.edu" || user.email === "marcus.hall@albany.edu") &&
@@ -199,7 +286,7 @@ async function readData() {
       user.password = hashPassword("demo1234");
       changed = true;
     }
-    if (typeof user.password === "string" && !user.password.includes(":")) {
+    if (typeof user.password === "string" && user.password && !user.password.includes(":")) {
       user.password = hashPassword(user.password);
       changed = true;
     }
@@ -332,7 +419,41 @@ async function readData() {
 }
 
 async function writeData(data) {
-  await fs.writeFile(dataFile, JSON.stringify(data, null, 2));
+  console.log("writeData users count:", data.users?.length);
+  console.log("writeData sessions count:", data.sessions?.length);
+  console.log("writeData requests count:", data.requests?.length);
+  console.log("writeData ratings count:", data.ratings?.length);
+  console.log("writeData messages count:", Object.keys(data.messages || {}).length);
+
+  await usersCollection.deleteMany({});
+  if (data.users?.length) {
+    await usersCollection.insertMany(data.users.map(({ _id, ...rest }) => rest));
+  }
+
+  await sessionsCollection.deleteMany({});
+  if (data.sessions?.length) {
+    await sessionsCollection.insertMany(data.sessions.map(({ _id, ...rest }) => rest));
+  }
+
+  await requestsCollection.deleteMany({});
+  if (data.requests?.length) {
+    await requestsCollection.insertMany(data.requests.map(({ _id, ...rest }) => rest));
+  }
+
+  await ratingsCollection.deleteMany({});
+  if (data.ratings?.length) {
+    await ratingsCollection.insertMany(data.ratings.map(({ _id, ...rest }) => rest));
+  }
+
+  await messagesCollection.deleteMany({});
+  const messageDocs = Object.entries(data.messages || {}).map(([requestId, messages]) => ({
+    requestId,
+    messages: messages.map(({ _id, ...rest }) => rest),
+  }));
+
+  if (messageDocs.length) {
+    await messagesCollection.insertMany(messageDocs);
+  }
 }
 
 function sendJson(response, statusCode, payload) {
@@ -434,6 +555,67 @@ function decorateRequest(record, data) {
   };
 }
 
+function getZoneFromDestination(destination = "") {
+  const normalized = destination.toLowerCase();
+
+  if (normalized.includes("state")) return "State Quad";
+  if (normalized.includes("dutch")) return "Dutch Quad";
+  if (normalized.includes("colonial")) return "Colonial Quad";
+  if (normalized.includes("indigenous")) return "Indigenous Quad";
+  if (normalized.includes("empire")) return "Empire Commons";
+  if (normalized.includes("freedom")) return "Freedom Apartments";
+  if (normalized.includes("liberty")) return "Liberty Terrace";
+  if (normalized.includes("library")) return "Library";
+  if (normalized.includes("massry")) return "Massry Center";
+  return "Campus Center";
+}
+
+function getCampusSnapshot(data, currentUserId) {
+  const openRequests = data.requests.filter((entry) => entry.status === "open");
+  const onlineCouriers = data.users.filter((entry) => entry.courierOnline).length;
+  const avgPayout =
+    openRequests.length > 0
+      ? Number(
+          (
+            openRequests.reduce((total, entry) => total + Number.parseFloat(entry.payment || "0"), 0) /
+            openRequests.length
+          ).toFixed(0),
+        )
+      : 0;
+
+  const zoneCounts = new Map();
+  for (const requestRecord of openRequests) {
+    const zone = getZoneFromDestination(requestRecord.destination || requestRecord.pickup || "");
+    zoneCounts.set(zone, (zoneCounts.get(zone) || 0) + 1);
+  }
+
+  const busiestZone =
+    [...zoneCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || "Campus Center";
+
+  const myRecentRequests = data.requests
+    .filter((entry) => entry.userId === currentUserId)
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 3)
+    .map((entry) => ({
+      id: entry.id,
+      serviceType: entry.serviceType,
+      pickup: entry.pickup,
+      destination: entry.destination,
+      payment: entry.payment,
+      notes: entry.notes,
+    }));
+
+  return {
+    onlineCouriers,
+    openRequests: openRequests.length,
+    avgPayout,
+    busiestZone,
+    lunchRushLabel: openRequests.length >= 4 ? "Busy right now" : openRequests.length >= 2 ? "Picking up" : "Quiet right now",
+    myRecentRequests,
+  };
+}
+
 async function readBody(request) {
   const chunks = [];
   for await (const chunk of request) {
@@ -458,7 +640,7 @@ const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1:4174");
 
     if (request.method === "GET" && url.pathname === "/api/health") {
-      sendJson(response, 200, { ok: true, backend: "local-json" });
+      sendJson(response, 200, { ok: true, backend: "mongodb" });
       return;
     }
 
@@ -631,6 +813,7 @@ const server = http.createServer(async (request, response) => {
         user: sanitizeUser(auth.user),
         restaurants: auth.data.restaurants,
         requests: auth.data.requests.map((entry) => decorateRequest(entry, auth.data)),
+        campusSnapshot: getCampusSnapshot(auth.data, auth.user.id),
       });
       return;
     }
@@ -665,6 +848,18 @@ const server = http.createServer(async (request, response) => {
 
       const body = await readBody(request);
       const startCheckout = body.startCheckout === true;
+      const activeRequestCount = auth.data.requests.filter(
+        (entry) =>
+          entry.userId === auth.user.id && (entry.status === "open" || entry.status === "accepted"),
+      ).length;
+
+      if (activeRequestCount >= MAX_ACTIVE_REQUESTS_PER_USER) {
+        sendJson(response, 400, {
+          error: `You can only have ${MAX_ACTIVE_REQUESTS_PER_USER} active orders at a time.`,
+        });
+        return;
+      }
+
       const requestRecord = {
         id: `request-${crypto.randomUUID()}`,
         userId: auth.user.id,
@@ -1185,11 +1380,11 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-await ensureDataFile();
+await ensureSeedData();
 
 const port = Number(process.env.PORT || 4174);
 const host = process.env.HOST || "0.0.0.0";
 
 server.listen(port, host, () => {
-  console.log(`CampusConnect API running at http://${host}:${port} (local persistent fallback)`);
+  console.log(`CampusConnect API running at http://${host}:${port} (MongoDB connected)`);
 });
