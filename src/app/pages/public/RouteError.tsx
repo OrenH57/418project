@@ -4,8 +4,8 @@
 
 import { AlertCircle, ArrowLeft, Home } from "lucide-react";
 import { isRouteErrorResponse, useNavigate, useRouteError } from "react-router-dom";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 
 export function RouteError() {
   const navigate = useNavigate();

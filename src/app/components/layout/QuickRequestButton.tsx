@@ -5,13 +5,13 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import { cn } from "../lib/cn";
-import { api } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
+import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { cn } from "../../lib/cn";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 
 export function QuickRequestButton() {
   const [isOpen, setIsOpen] = useState(false);
@@ -47,7 +47,7 @@ export function QuickRequestButton() {
     <>
       <button
         className={cn(
-          "fixed right-6 bottom-6 z-50 flex h-16 w-16 items-center justify-center rounded-full",
+          "fixed right-4 bottom-24 z-50 flex h-14 w-14 items-center justify-center rounded-full sm:right-6 sm:bottom-6 sm:h-16 sm:w-16",
           "bg-[var(--brand-maroon)] text-white shadow-lg transition duration-200 hover:scale-105 hover:bg-[var(--brand-maroon-deep)]",
         )}
         onClick={() => setIsOpen((open) => !open)}
@@ -58,7 +58,7 @@ export function QuickRequestButton() {
 
       <div
         className={cn(
-          "fixed right-6 bottom-24 z-40 w-80 rounded-2xl border border-[var(--border)] bg-white p-6 shadow-xl",
+          "fixed right-4 bottom-40 left-4 z-40 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-xl sm:right-6 sm:bottom-24 sm:left-auto sm:w-80 sm:p-6",
           "transition-all duration-200",
           isOpen ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0",
         )}
@@ -75,8 +75,6 @@ export function QuickRequestButton() {
               <SelectContent>
                 <SelectItem value="food">Food Delivery</SelectItem>
                 <SelectItem value="ride">Ride</SelectItem>
-                <SelectItem value="moving">Moving Help</SelectItem>
-                <SelectItem value="tutor">Tutoring</SelectItem>
               </SelectContent>
             </Select>
           </div>

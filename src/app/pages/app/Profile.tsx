@@ -6,17 +6,17 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ChangeEvent } from "react";
 import { ArrowLeft, ShieldCheck, Star, Wallet, Bell, Bike, MailCheck, ImagePlus, CheckCircle2 } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Avatar, AvatarFallback } from "../components/ui/avatar";
-import { Badge } from "../components/ui/badge";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { api } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
-import { getDefaultPath, getStoredView } from "../lib/viewMode";
-import { browserNotificationsSupported, requestBrowserNotificationPermission } from "../lib/notifications";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
+import { getDefaultPath, getStoredView } from "../../lib/viewMode";
+import { browserNotificationsSupported, requestBrowserNotificationPermission } from "../../lib/notifications";
 
 type ProfileData = {
   id: string;
@@ -338,7 +338,7 @@ export function Profile() {
                       <p className="font-medium text-[var(--ink)]">3. Go online</p>
                     </div>
                     <p className="mt-2 text-sm text-[var(--muted)]">
-                      Stay online between classes and let the app nudge you when a nearby order comes in.
+                      Stay online while you are in the dorms, library, or around campus and let the app nudge you when a nearby order comes in.
                     </p>
                   </div>
                 </CardContent>

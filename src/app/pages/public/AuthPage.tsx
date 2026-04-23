@@ -7,27 +7,27 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
-import { LandingHeroGraphic } from "../components/LandingHeroGraphic";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
-import { getDefaultPath, setStoredView } from "../lib/viewMode";
-import { isMicrosoftAuthConfigured, microsoftLoginRequest } from "../lib/microsoftAuth";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
+import { LandingHeroGraphic } from "../../components/marketing/LandingHeroGraphic";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
+import { getDefaultPath, setStoredView } from "../../lib/viewMode";
+import { isMicrosoftAuthConfigured, microsoftLoginRequest } from "../../lib/microsoftAuth";
 
 const sideCopy = {
   requester: {
-    badge: "Ordering side",
-    title: "Place an order",
-    description: "Sign in to order food, request rides, and ask for campus help.",
+    badge: "Requester side",
+    title: "Request delivery or a ride",
+    description: "Sign in to request food delivery after ordering in GET, or book a campus ride.",
   },
   courier: {
     badge: "Deliverer side",
     title: "Become a deliverer",
-    description: "Sign in to take nearby delivery jobs and earn quick money between classes.",
+    description: "Sign in to take nearby delivery jobs and earn money helping students in dorms, libraries, and late-night campus spots.",
   },
 };
 
@@ -166,18 +166,17 @@ export function AuthPage() {
           <CardContent className="p-5 sm:p-8 lg:p-9">
             <Badge className="mb-3 bg-white/15 text-white sm:mb-4">UAlbany Prototype</Badge>
             <h1 className="max-w-xl text-2xl font-bold leading-tight sm:text-4xl">
-              Student delivery for Campus Center restaurants that only offer pickup.
+              Student delivery for Campus Center food orders and quick campus rides.
             </h1>
             <p className="mt-3 max-w-xl text-sm text-white/85 sm:mt-4 sm:text-base">
-              CampusConnect lets students order from UAlbany Campus Center spots, post a delivery
-              request, and have another student courier bring it across campus.
+              CampusConnect is where students request delivery and rides. Food orders still happen in GET first, then another student can bring them across campus.
             </p>
 
             <div className="mt-5 hidden gap-3 sm:grid md:grid-cols-3 sm:gap-4 sm:mt-8">
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <UtensilsCrossed className="mb-3 h-5 w-5" />
                 <p className="font-semibold">Campus Center pickup</p>
-                <p className="mt-1 text-sm text-white/80">The Halal Shack, Starbucks, Baba&apos;s Pizza, and more.</p>
+                <p className="mt-1 text-sm text-white/80">Order in GET first, then request delivery here for Starbucks, Baba&apos;s Pizza, and more.</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Bike className="mb-3 h-5 w-5" />
@@ -223,7 +222,7 @@ export function AuthPage() {
               <p className="mt-3 font-semibold text-[var(--ink)]">{currentSideCopy.title}</p>
               <p className="mt-1 text-sm text-[var(--muted)]">{currentSideCopy.description}</p>
               <p className="mt-3 text-xs text-[var(--muted)]">
-                Need the other side instead? Go back and choose the other path.
+                You can still switch paths later if you need the other side.
               </p>
             </div>
           </CardHeader>

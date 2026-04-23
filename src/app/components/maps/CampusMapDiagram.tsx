@@ -1,5 +1,5 @@
-import { cn } from "../lib/cn";
-import { campusMapNodes, type CampusMapNode } from "../lib/campusMap";
+import { cn } from "../../lib/cn";
+import { campusMapNodes, type CampusMapNode } from "../../lib/campusMap";
 
 // File purpose:
 // Reusable visual campus diagram for the map page.

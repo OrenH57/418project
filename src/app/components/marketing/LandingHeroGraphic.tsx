@@ -2,17 +2,19 @@
 // Public landing-page collage graphic.
 // Uses a compact food-and-delivery layout that stays readable on phones.
 
+const baseUrl = import.meta.env.BASE_URL;
+
 const restaurantImages = [
-  { name: "Morris's Cafe", src: "/landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg" },
-  { name: "The Corner Deli", src: "/landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg" },
-  { name: "Umai Fusion", src: "/landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg" },
-  { name: "The Spread", src: "/landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg" },
-  { name: "Baba's Pizza", src: "/landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg" },
-  { name: "Greens To Go", src: "/landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg" },
-  { name: "Zoca", src: "/landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg" },
-  { name: "Jamal's Chicken", src: "/landing-food/20c98794-cc03-4205-b3fa-1343b6f211c9.jpeg" },
-  { name: "Yella's", src: "/landing-food/7309b43d-f500-477e-8585-c61ccd069e52.jpeg" },
-  { name: "The Halal Shack", src: "/landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg" },
+  { name: "Morris's Cafe", src: `${baseUrl}landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg` },
+  { name: "The Corner Deli", src: `${baseUrl}landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg` },
+  { name: "Umai Fusion", src: `${baseUrl}landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg` },
+  { name: "The Spread", src: `${baseUrl}landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg` },
+  { name: "Baba's Pizza", src: `${baseUrl}landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg` },
+  { name: "Greens To Go", src: `${baseUrl}landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg` },
+  { name: "Zoca", src: `${baseUrl}landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg` },
+  { name: "Jamal's Chicken", src: `${baseUrl}landing-food/20c98794-cc03-4205-b3fa-1343b6f211c9.jpeg` },
+  { name: "Yella's", src: `${baseUrl}landing-food/7309b43d-f500-477e-8585-c61ccd069e52.jpeg` },
+  { name: "The Halal Shack", src: `${baseUrl}landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg` },
 ];
 
 export function LandingHeroGraphic() {
@@ -34,17 +36,15 @@ export function LandingHeroGraphic() {
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4">
-          {restaurantImages.map((image) => (
+          {restaurantImages.map((image, index) => (
             <div
               key={image.name}
-              className="overflow-hidden rounded-[0.95rem] border border-white/80 bg-white shadow-sm sm:rounded-[1.2rem]"
+              className={`overflow-hidden rounded-[0.95rem] border border-white/80 bg-white shadow-sm sm:rounded-[1.2rem] ${
+                index >= 4 ? "hidden sm:block" : ""
+              }`}
             >
               <div className="aspect-[4/3] bg-white">
-                <img
-                  alt={image.name}
-                  className="h-full w-full object-cover"
-                  src={image.src}
-                />
+                <img alt={image.name} className="h-full w-full object-cover" src={image.src} />
               </div>
               <div className="border-t border-[var(--border)] px-2 py-1.5 text-center text-[10px] font-medium text-[var(--ink)] sm:px-2.5 sm:py-1.5 sm:text-xs">
                 {image.name}
@@ -55,14 +55,12 @@ export function LandingHeroGraphic() {
 
         <div className="mt-2.5 rounded-[1rem] border border-white/90 bg-white/92 p-3 shadow-lg backdrop-blur sm:absolute sm:right-3 sm:bottom-3 sm:mt-0 sm:max-w-[220px] sm:rounded-[1.35rem] sm:p-3.5 sm:shadow-xl">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-xl text-white shadow-sm sm:h-14 sm:w-14 sm:text-2xl">
-              🚲
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-sm font-semibold text-white shadow-sm sm:h-14 sm:w-14">
+              Bike
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] sm:text-xs">Pickup to handoff</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                Student courier on the way
-              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Student courier on the way</p>
             </div>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)] sm:mt-2.5 sm:text-sm">

@@ -32,6 +32,8 @@ export const MIN_PAYMENT_OFFER = 4;
 export const DISCOUNT_RATE = 0.4;
 
 export async function loadEnv() {
+  const loadedKeys = new Set();
+
   for (const envName of [".env", ".env.local"]) {
     try {
       const raw = await fs.readFile(path.join(rootDir, envName), "utf8");
@@ -42,8 +44,12 @@ export async function loadEnv() {
         if (separator === -1) continue;
         const key = trimmed.slice(0, separator).trim();
         const value = trimmed.slice(separator + 1).trim();
-        if (!(key in process.env)) {
+
+        // Keep real shell-provided environment variables highest priority,
+        // but let .env.local override values that came from .env.
+        if (!(key in process.env) || loadedKeys.has(key)) {
           process.env[key] = value;
+          loadedKeys.add(key);
         }
       }
     } catch {

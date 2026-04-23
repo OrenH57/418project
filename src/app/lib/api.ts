@@ -71,20 +71,53 @@ export type RatingSummary = {
   } | null;
 };
 
-async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+export type CampusSnapshot = {
+  onlineCouriers: number;
+  openRequests: number;
+  avgPayout: number;
+  busiestZone: string;
+  lunchRushLabel: string;
+  myRecentRequests: Array<{
+    id: string;
+    serviceType: string;
+    pickup: string;
+    destination: string;
+    payment: string;
+    notes: string;
+  }>;
+};
 
-  const payload = await response.json();
+async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch {
+    throw new Error("Could not reach the CampusConnect server. Check that the backend is running and try again.");
+  }
+
+  let payload: unknown = {};
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    payload = await response.json();
+  }
 
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed.");
+    const errorMessage =
+      typeof payload === "object" &&
+      payload !== null &&
+      "error" in payload &&
+      typeof payload.error === "string"
+        ? payload.error
+        : "Request failed.";
+    throw new Error(errorMessage);
   }
 
   return payload as T;
@@ -125,7 +158,11 @@ export const api = {
     return request<{ user: User }>("/session", {}, token);
   },
   bootstrap(token: string) {
-    return request<{ user: User; restaurants: string[]; requests: RequestRecord[] }>("/bootstrap", {}, token);
+    return request<{ user: User; restaurants: string[]; requests: RequestRecord[]; campusSnapshot: CampusSnapshot }>(
+      "/bootstrap",
+      {},
+      token,
+    );
   },
   getRequests(token: string, mode: "all" | "mine" | "courier") {
     return request<{ requests: RequestRecord[] }>(`/requests?mode=${mode}`, {}, token);

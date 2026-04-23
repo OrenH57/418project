@@ -6,23 +6,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { ArrowLeft, Clock, DollarSign, MapPin, Navigation, UtensilsCrossed } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { api, type RequestRecord } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
-import { cn } from "../lib/cn";
-import { CampusMapDiagram } from "../components/CampusMapDiagram";
-import { getDefaultPath, getStoredView } from "../lib/viewMode";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { api, type RequestRecord } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
+import { cn } from "../../lib/cn";
+import { CampusMapDiagram } from "../../components/maps/CampusMapDiagram";
+import { getDefaultPath, getStoredView } from "../../lib/viewMode";
 import {
   campusMapNodes,
   campusZones,
   findCampusNodeForRequest,
   getRequestZoneLabel,
   type CampusMapNode,
-} from "../lib/campusMap";
+} from "../../lib/campusMap";
 
 type SummaryStat = {
   label: string;

@@ -5,3 +5,4 @@ dist/
 .env.local
 server/data/app-data.json
 *.tsbuildinfo
+*.log

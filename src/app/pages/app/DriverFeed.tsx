@@ -9,29 +9,25 @@ import {
   Clock,
   DollarSign,
   Car,
-  Package,
   UtensilsCrossed,
-  BookOpen,
   Bell,
   ShieldCheck,
 } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Avatar, AvatarFallback } from "../components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { api, type RequestRecord } from "../lib/api";
-import { useAuth } from "../context/AuthContext";
-import { toast } from "../components/ui/sonner";
-import { getRequestZoneLabel } from "../lib/campusMap";
-import { getStoredView } from "../lib/viewMode";
-import { canSendBrowserNotifications, sendBrowserNotification } from "../lib/notifications";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { api, type RequestRecord } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "../../components/ui/sonner";
+import { getRequestZoneLabel } from "../../lib/campusMap";
+import { getStoredView } from "../../lib/viewMode";
+import { canSendBrowserNotifications, sendBrowserNotification } from "../../lib/notifications";
 
 const typeLabels: Record<string, string> = {
   food: "Food Delivery",
   ride: "Ride",
-  moving: "Moving Help",
-  tutor: "Tutoring",
 };
 
 export function DriverFeed() {
@@ -121,8 +117,7 @@ export function DriverFeed() {
   function getTypeIcon(type: string) {
     if (type === "food") return UtensilsCrossed;
     if (type === "ride") return Car;
-    if (type === "moving") return Package;
-    return BookOpen;
+    return DollarSign;
   }
 
   function getTypeColor(type: string) {
@@ -131,8 +126,6 @@ export function DriverFeed() {
         return "bg-[var(--gold-soft)] text-[var(--brand-maroon)]";
       case "food":
         return "bg-[var(--surface-tint)] text-[var(--brand-maroon)]";
-      case "moving":
-        return "bg-[var(--gold-soft)] text-[var(--brand-accent)]";
       default:
         return "bg-[var(--surface-tint)] text-[var(--brand-accent)]";
     }
@@ -230,8 +223,6 @@ export function DriverFeed() {
                 <SelectItem value="all">All Job Types</SelectItem>
                 <SelectItem value="food">Order Pickups</SelectItem>
                 <SelectItem value="ride">Rides</SelectItem>
-                <SelectItem value="moving">Moving</SelectItem>
-                <SelectItem value="tutor">Tutoring</SelectItem>
               </SelectContent>
             </Select>
           </div>
