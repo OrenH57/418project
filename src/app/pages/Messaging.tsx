@@ -69,7 +69,7 @@ export function Messaging() {
         setSearchParams(searchParams, { replace: true });
       }
     })();
-  }, [loadMessages, requestId, searchParams, setSearchParams, token]);
+  }, [requestId, searchParams, setSearchParams, token]);
 
   async function handleSend() {
     if (!token || !requestId || !draft.trim()) return;
@@ -111,16 +111,16 @@ export function Messaging() {
   const isRequester = Boolean(user && requestRecord && user.id === requestRecord.userId);
   const canMarkFoodReady = Boolean(requestRecord?.serviceType === "food" && isRequester && !requestRecord.foodReady);
   const courierEarnings =
-    requestRecord?.serviceType === "discount" && typeof requestRecord?.runnerEarnings === "number"
+    requestRecord?.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
       ? requestRecord.runnerEarnings
       : requestRecord
         ? Number.parseFloat(requestRecord.payment)
         : null;
   const otherParticipantName = isRequester
     ? requestRecord?.courierName || "Courier not assigned yet"
-    : requestRecord?.requesterName || "Requester";
-  const otherParticipantRole = isRequester ? "Courier" : "Requester";
-  const myRoleLabel = isRequester ? "Requester" : "Courier";
+    : requestRecord?.requesterName || "Customer";
+  const otherParticipantRole = isRequester ? "Courier" : "Customer";
+  const myRoleLabel = isRequester ? "Customer" : "Courier";
   const paymentStatus = requestRecord?.paymentStatus || "unpaid";
   const paymentLabel =
     paymentStatus === "paid" ? "Paid in Stripe" : paymentStatus === "pending" ? "Stripe checkout started" : "Not paid yet";
@@ -147,6 +147,7 @@ export function Messaging() {
                 <Badge variant="secondary">{myRoleLabel}</Badge>
               </div>
             </div>
+
             <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
               <Avatar>
                 <AvatarFallback>{otherParticipantName[0] ?? "S"}</AvatarFallback>
@@ -164,6 +165,7 @@ export function Messaging() {
                 </p>
               </div>
             </div>
+
             <div className="rounded-xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
               <div className="mb-2 flex items-center gap-2 font-medium text-[var(--ink)]">
                 <Shield className="h-4 w-4 text-green-700" />
@@ -171,12 +173,14 @@ export function Messaging() {
               </div>
               Meet in public campus spaces, confirm the pickup name, and keep communication in-app.
             </div>
+
             {requestRecord?.orderEta ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--gold-soft)] p-4 text-sm text-[var(--ink)]">
                 <p className="font-medium">GET Mobile ready estimate</p>
                 <p className="mt-1">{requestRecord.orderEta}</p>
               </div>
             ) : null}
+
             {requestRecord?.serviceType === "food" ? (
               <div
                 className={`rounded-xl border p-4 text-sm ${
@@ -190,7 +194,7 @@ export function Messaging() {
                 </p>
                 <p className="mt-1 text-[var(--muted)]">
                   {requestRecord.foodReady
-                    ? "The requester already told the courier the order is ready."
+                    ? "The customer already told the courier the order is ready."
                     : "Use the button below as soon as you get the GET email so the courier does not wait around."}
                 </p>
                 {canMarkFoodReady ? (
@@ -201,6 +205,7 @@ export function Messaging() {
                 ) : null}
               </div>
             ) : null}
+
             {requestRecord?.serviceType === "discount" ? (
               <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--ink)]">
                 <p className="font-medium">Discount Dollars preview</p>
@@ -209,26 +214,25 @@ export function Messaging() {
                 </p>
                 <div className="mt-2 space-y-1 text-[var(--muted)]">
                   <p>
-                    Retail total: {" "}
+                    Retail total:{" "}
                     {typeof requestRecord.estimatedRetailTotal === "number"
                       ? `$${requestRecord.estimatedRetailTotal.toFixed(2)}`
                       : "--"}
                   </p>
                   <p>
-                    Estimated Discount Dollar cost: {" "}
+                    Estimated Discount Dollar cost:{" "}
                     {typeof requestRecord.estimatedDiscountCost === "number"
                       ? `$${requestRecord.estimatedDiscountCost.toFixed(2)}`
                       : "--"}
                   </p>
                   <p>
-                    Runner earnings: {" "}
-                    {typeof requestRecord.runnerEarnings === "number"
-                      ? `$${requestRecord.runnerEarnings.toFixed(2)}`
-                      : "--"}
+                    Runner earnings:{" "}
+                    {typeof requestRecord.runnerEarnings === "number" ? `$${requestRecord.runnerEarnings.toFixed(2)}` : "--"}
                   </p>
                 </div>
               </div>
             ) : null}
+
             {requestRecord?.orderScreenshot ? (
               <div className="space-y-2">
                 <p className="text-sm font-medium text-[var(--ink)]">Order screenshot</p>
@@ -239,17 +243,16 @@ export function Messaging() {
                 />
               </div>
             ) : null}
+
             <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--ink)]">
               <p className="font-medium">{isRequester ? "Delivery fee" : "Courier earnings"}</p>
               <p className="mt-1 text-[var(--muted)]">
                 {isRequester
-                  ? "This is the amount tied to the request on the requester side."
+                  ? "This is the amount tied to the request on the customer side."
                   : "This is what you will earn for completing the job."}
               </p>
               <p className="mt-2 text-lg font-semibold text-[var(--brand-accent)]">
-                {courierEarnings !== null && Number.isFinite(courierEarnings)
-                  ? `$${courierEarnings.toFixed(2)}`
-                  : "--"}
+                {courierEarnings !== null && Number.isFinite(courierEarnings) ? `$${courierEarnings.toFixed(2)}` : "--"}
               </p>
               {isRequester ? (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--surface-tint)] px-3 py-1 text-xs font-medium text-[var(--muted)]">
@@ -258,6 +261,7 @@ export function Messaging() {
                 </div>
               ) : null}
             </div>
+
             {isRequester && requestRecord?.serviceType !== "food" ? (
               <Button
                 className="w-full"
@@ -268,6 +272,7 @@ export function Messaging() {
                 {paymentStatus === "paid" ? "Delivery Fee Paid" : isCreatingCheckout ? "Opening Stripe..." : "Pay Delivery Fee"}
               </Button>
             ) : null}
+
             <Button className="w-full" onClick={() => navigate(`/rate/${requestId ?? "1"}`)} variant="secondary">
               Leave Rating
             </Button>
@@ -293,13 +298,11 @@ export function Messaging() {
                 <div key={message.id} className={`flex ${message.mine ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${
-                      message.mine
-                        ? "bg-[var(--brand-maroon)] text-white"
-                        : "bg-[var(--gold-soft)] text-[var(--ink)]"
+                      message.mine ? "bg-[var(--brand-maroon)] text-white" : "bg-[var(--gold-soft)] text-[var(--ink)]"
                     }`}
                   >
                     <p className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${message.mine ? "text-white/75" : "text-[var(--muted)]"}`}>
-                      {message.mine ? `You · ${myRoleLabel}` : `${message.senderName} · ${otherParticipantRole}`}
+                      {message.mine ? `You - ${myRoleLabel}` : `${message.senderName} - ${otherParticipantRole}`}
                     </p>
                     <p>{message.text}</p>
                     <p className={`mt-1 text-xs ${message.mine ? "text-white/75" : "text-[var(--muted)]"}`}>

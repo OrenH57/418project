@@ -22,7 +22,7 @@ const sideCopy = {
   requester: {
     badge: "Ordering side",
     title: "Place an order",
-    description: "Sign in to order food, request rides, and ask for campus help.",
+    description: "Sign in to order food and request rides.",
   },
   courier: {
     badge: "Deliverer side",

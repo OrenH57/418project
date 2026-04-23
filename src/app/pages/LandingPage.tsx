@@ -48,18 +48,18 @@ export function LandingPage() {
                 UAlbany student-to-student delivery
               </Badge>
               <h1 className="max-w-3xl text-3xl font-bold leading-tight text-[var(--ink)] sm:text-5xl">
-                Order food, rides, and campus help without the extra campus trip.
+                Order food and rides without the extra campus trip.
               </h1>
               <p className="mt-3 max-w-2xl text-sm text-[var(--muted)] sm:text-lg">
-                CampusConnect helps UAlbany students order food, request rides, and get simple campus help from other students.
+                CampusConnect helps UAlbany students order food and request rides from other students.
               </p>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Need Help?</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Need Something?</p>
                   <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">Place an order</h2>
                   <p className="mt-2 text-sm text-[var(--muted)]">
-                    Order food, request a ride, or ask for help, then follow the request in one place.
+                    Order food or request a ride, then follow the request in one place.
                   </p>
                   <div className="mt-4 flex flex-col gap-2">
                     <Button className="w-full" onClick={() => navigate("/auth?side=requester")} size="lg">

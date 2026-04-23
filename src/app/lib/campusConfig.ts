@@ -4,14 +4,9 @@
 
 export const GET_MOBILE_URL = "https://get.cbord.com/albany/full/food_home.php";
 export const MIN_PAYMENT_OFFER = 4;
-export const DISCOUNT_RATE = 0.4;
-
 export const serviceTypes = [
   { value: "food", label: "Food Delivery", suggestedPrice: "$5-10" },
-  { value: "discount", label: "Discount Dollars (Coming Soon)", suggestedPrice: "Launching soon" },
   { value: "ride", label: "Ride", suggestedPrice: "$5-15" },
-  { value: "moving", label: "Moving Help", suggestedPrice: "$20-50" },
-  { value: "tutor", label: "Tutoring", suggestedPrice: "$15-30/hr" },
 ];
 
 export const housingLocations = [
@@ -147,32 +142,12 @@ export function getHelperCopy(serviceType: string) {
     };
   }
 
-  if (serviceType === "discount") {
-    return {
-      title: "Discount Dollars preview",
-      pickupLabel: "Campus restaurant",
-      destinationLabel: "Pickup location",
-      destinationPlaceholder: "Coming soon",
-      notesPlaceholder: "Discount Dollars is an incoming feature for future campus restaurant orders.",
-    };
-  }
-
-  if (serviceType === "tutor") {
-    return {
-      title: "Tutoring details",
-      pickupLabel: "Subject / Topic *",
-      destinationLabel: "Meeting Location *",
-      destinationPlaceholder: "Library, Zoom, or study room",
-      notesPlaceholder: "Share any course details or prep notes...",
-    };
-  }
-
   return {
-    title: "Service details",
+    title: "Ride details",
     pickupLabel: "Pickup Location *",
     destinationLabel: "Destination *",
-    destinationPlaceholder: "Enter destination",
-    notesPlaceholder: "Add any special instructions...",
+    destinationPlaceholder: "Residence hall, classroom, or campus stop",
+    notesPlaceholder: "Add pickup details or timing notes...",
   };
 }
 

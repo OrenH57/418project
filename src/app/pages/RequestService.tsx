@@ -1,5 +1,5 @@
 // File purpose:
-// Main request creation form for food, discount-dollar runs, rides, and other campus help.
+// Main request creation form for food delivery and rides.
 // Builds the final request payload and validates the pieces students enter.
 
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +17,6 @@ import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import {
   MIN_PAYMENT_OFFER,
-  DISCOUNT_RATE,
   serviceTypes,
   housingLocations,
   getHelperCopy,
@@ -100,7 +99,7 @@ export function RequestService() {
   const [housingDetails, setHousingDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const needsDestination = serviceType === "ride" || serviceType === "food" || serviceType === "discount";
+  const needsDestination = serviceType === "ride" || serviceType === "food";
   const helperCopy = useMemo(() => getHelperCopy(serviceType), [serviceType]);
   const selectedService = serviceTypes.find((service) => service.value === serviceType);
   const selectedHousingArea = useMemo(
@@ -126,17 +125,8 @@ export function RequestService() {
   );
   const estimatedRetailAmount = Number.parseFloat(estimatedRetailTotal);
   const paymentAmount = Number.parseFloat(payment);
-  const estimatedDiscountCost =
-    serviceType === "discount" && Number.isFinite(estimatedRetailAmount)
-      ? Number((estimatedRetailAmount * (1 - DISCOUNT_RATE)).toFixed(2))
-      : null;
-  const estimatedRunnerEarnings =
-    serviceType === "discount" && estimatedDiscountCost !== null && Number.isFinite(paymentAmount)
-      ? Number((paymentAmount - estimatedDiscountCost).toFixed(2))
-      : null;
   const isFood = serviceType === "food";
-  const isDiscount = serviceType === "discount";
-  const isHousingDelivery = isFood || isDiscount;
+  const isHousingDelivery = isFood;
   const hasOrderScreenshot = Boolean(orderScreenshot);
   const [hasOrderedInGet, setHasOrderedInGet] = useState(!isFood);
 
@@ -151,16 +141,16 @@ export function RequestService() {
       const response = await api.bootstrap(token);
       setRestaurants(response.restaurants);
 
-      if (!pickupFromUrl && response.restaurants[0] && (isFood || isDiscount)) {
+      if (!pickupFromUrl && response.restaurants[0] && isFood) {
         setPickup(response.restaurants[0]);
       }
     }
 
     void loadBootstrap();
-  }, [isDiscount, isFood, pickupFromUrl, token]);
+  }, [isFood, pickupFromUrl, token]);
 
   useEffect(() => {
-    if (serviceType !== "food" && serviceType !== "discount" && serviceType !== "ride") {
+    if (serviceType !== "food" && serviceType !== "ride") {
       return;
     }
 
@@ -222,28 +212,13 @@ export function RequestService() {
       return;
     }
 
-    if ((serviceType === "food" || serviceType === "discount") && !housingArea) {
+    if (serviceType === "food" && !housingArea) {
       toast.error("Choose the residential area for delivery.");
-      return;
-    }
-
-    if (serviceType === "discount" && !hasOrderScreenshot && !notes.trim()) {
-      toast.error("Add the restaurant items so the runner knows what to order.");
-      return;
-    }
-
-    if (serviceType === "discount" && !Number.isFinite(estimatedRetailAmount)) {
-      toast.error("Add the estimated retail total for the order.");
       return;
     }
 
     if (!Number.isFinite(paymentAmount) || paymentAmount < MIN_PAYMENT_OFFER) {
       toast.error(`Payment offers must be at least $${MIN_PAYMENT_OFFER}.`);
-      return;
-    }
-
-    if (serviceType === "discount" && estimatedRunnerEarnings !== null && estimatedRunnerEarnings <= 0) {
-      toast.error("Set a platform payment that leaves room for the runner to earn money.");
       return;
     }
 
@@ -254,14 +229,7 @@ export function RequestService() {
               .filter(Boolean)
               .join("\n")
           : buildFoodNotes(orderNumber, orderItems, notes)
-        : serviceType === "discount"
-        ? [
-            "Discount Dollars coming soon",
-            "This feature is being reworked and is not currently accepting new requests.",
-          ]
-            .filter(Boolean)
-            .join("\n")
-          : notes.trim();
+        : notes.trim();
 
     try {
       setIsSubmitting(true);
@@ -303,12 +271,12 @@ export function RequestService() {
         <Card>
           <CardHeader>
             <CardTitle>{helperCopy.title}</CardTitle>
-            <CardDescription>Fill out a short request so another student can help.</CardDescription>
+            <CardDescription>Fill out a short request so another student can deliver or drive for you.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-6" onSubmit={handleSubmit}>
               <SectionCard
-                description="Start by picking the kind of help you want."
+                description="Start by picking what you need."
                 title="1. What do you need?"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -435,21 +403,6 @@ export function RequestService() {
                       </div>
                     </>
                   ) : null}
-                </SectionCard>
-              ) : isDiscount ? (
-                <SectionCard
-                  description="This feature is being prepared. Food delivery is the live ordering flow right now."
-                  title="2. Discount Dollars is coming soon"
-                >
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-                    <p className="font-medium text-[var(--ink)]">What to use for now</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      If you already placed a campus restaurant order, use Food Delivery so a courier can pick it up and bring it to you.
-                    </p>
-                    <p className="mt-2 text-sm text-[var(--muted)]">
-                      Discount Dollars will come back later as its own lighter request flow.
-                    </p>
-                  </div>
                 </SectionCard>
               ) : (
                 <SectionCard description="Keep this simple and short." title="2. Main details">
@@ -638,33 +591,25 @@ export function RequestService() {
                       />
                     </div>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      {isDiscount ? "Coming soon" : "This is what the courier earns for the job. Minimum offer: $4."}
+                      This is what the courier earns for the job. Minimum offer: $4.
                     </p>
                   </div>
                 </div>
 
-                {!isDiscount ? (
-                  <div>
-                    <Label htmlFor="notes">Anything else?</Label>
-                    <Textarea
-                      id="notes"
-                      onChange={(event) => setNotes(event.target.value)}
-                      placeholder={helperCopy.notesPlaceholder}
-                      rows={3}
-                      value={notes}
-                    />
-                  </div>
-                ) : null}
+                <div>
+                  <Label htmlFor="notes">Anything else?</Label>
+                  <Textarea
+                    id="notes"
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder={helperCopy.notesPlaceholder}
+                    rows={3}
+                    value={notes}
+                  />
+                </div>
               </SectionCard>
 
-              <Button className="w-full" disabled={isDiscount || isSubmitting} size="lg" type="submit">
-                {isDiscount
-                  ? "Discount Dollars Coming Soon"
-                  : isSubmitting
-                    ? "Opening Stripe..."
-                    : isFood
-                      ? "Place Order And Pay"
-                      : "Place My Order"}
+              <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
+                {isSubmitting ? "Opening Stripe..." : isFood ? "Place Order And Pay" : "Place My Order"}
               </Button>
             </form>
           </CardContent>

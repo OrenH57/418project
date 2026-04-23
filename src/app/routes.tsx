@@ -35,7 +35,7 @@ export const router = createBrowserRouter([
           { path: "messages/:requestId", Component: Messaging },
           { path: "profile", Component: Profile },
           { path: "help", Component: HelpInfo },
-          { path: "rate/:userId", Component: Ratings },
+          { path: "rate/:requestId", Component: Ratings },
           { path: "admin", Component: AdminDashboard },
           { path: "*", element: <Navigate replace to="/app" /> },
         ],

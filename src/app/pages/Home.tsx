@@ -7,13 +7,11 @@ import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
-  BookOpen,
   Car,
   ChevronRight,
   Clock,
   DollarSign,
   MapPin,
-  Package,
   Sparkles,
   Store,
   TimerReset,
@@ -57,30 +55,6 @@ const quickActions: QuickAction[] = [
     icon: Car,
     accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
   },
-  {
-    label: "Moving Help",
-    description: "Ask for help carrying boxes or bins.",
-    detail: "Heavy items",
-    path: "/request?type=moving",
-    icon: Package,
-    accentClassName: "bg-[var(--surface-tint)] text-[var(--brand-maroon)]",
-  },
-  {
-    label: "Find Tutor",
-    description: "Find another student who can help fast.",
-    detail: "Academic support",
-    path: "/request?type=tutor",
-    icon: BookOpen,
-    accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
-  },
-  {
-    label: "Dollar Run",
-    description: "Discount Dollars support is coming soon.",
-    detail: "Coming soon",
-    path: "/app",
-    icon: DollarSign,
-    accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-accent)]",
-  },
 ];
 
 const howItWorks = [
@@ -102,7 +76,7 @@ const howItWorks = [
 ];
 
 const heroCopy = {
-  badge: "UAlbany Campus Help",
+  badge: "UAlbany Delivery And Rides",
   primaryLabel: "Order Food",
   primaryPath: "/request?type=food&pickup=Starbucks",
   secondaryLabel: "Get a Ride",
@@ -112,14 +86,12 @@ const heroCopy = {
 function getRequestIcon(serviceType: string) {
   if (serviceType === "food") return UtensilsCrossed;
   if (serviceType === "ride") return Car;
-  if (serviceType === "moving") return Package;
-  return BookOpen;
+  return DollarSign;
 }
 
 function getRequestAccentClassName(serviceType: string) {
   if (serviceType === "ride") return "bg-[var(--gold-soft)] text-[var(--brand-maroon)]";
   if (serviceType === "food") return "bg-[var(--surface-tint)] text-[var(--brand-maroon)]";
-  if (serviceType === "moving") return "bg-[var(--gold-soft)] text-[var(--brand-accent)]";
   return "bg-[var(--surface-tint)] text-[var(--brand-accent)]";
 }
 
@@ -128,11 +100,11 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
 
   return (
     <button
-      className="rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)] p-0 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--brand-accent)] hover:shadow-lg"
+      className="rounded-[1.75rem] border-2 border-[var(--border)] bg-[var(--surface)] p-0 text-left shadow-[0_8px_20px_rgba(45,34,39,0.05)] transition-all hover:-translate-y-1 hover:border-[var(--brand-accent)] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-gold)] focus-visible:ring-offset-2"
       onClick={() => onOpen(action.path)}
       type="button"
     >
-      <div className="flex h-full flex-col gap-5 p-5">
+      <div className="flex h-full flex-col gap-6 p-6">
         <div className="flex items-start justify-between gap-3">
           <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", action.accentClassName)}>
             <Icon className="h-6 w-6" />
@@ -145,8 +117,8 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
           <p className="mt-1 text-sm leading-5 text-[var(--muted)]">{action.description}</p>
         </div>
 
-        <div className="flex items-center justify-between text-sm font-medium text-[var(--brand-maroon)]">
-          <span>Continue</span>
+        <div className="flex items-center justify-between text-sm font-semibold text-[var(--brand-maroon)]">
+          <span className="rounded-full bg-[var(--surface-tint)] px-3 py-1">Tap to open</span>
           <ArrowRight className="h-4 w-4 shrink-0" />
         </div>
       </div>
@@ -303,7 +275,7 @@ export function Home() {
                 {heroCopy.badge}
               </Badge>
               <h1 className="max-w-2xl text-3xl font-bold leading-tight text-[var(--ink)] sm:text-5xl">
-                Easy campus delivery, rides, and help in a couple taps.
+                Easy campus food delivery and rides in a couple taps.
               </h1>
               <p className="mt-3 max-w-2xl text-[var(--muted)]">
                 Hi, {user?.name.split(" ")[0]}. Pick what you need, send the request, and follow updates from one simple page.
@@ -368,7 +340,7 @@ export function Home() {
               <p className="mt-1 text-sm text-[var(--muted)]">Start from a big category instead of a search box.</p>
             </div>
             <Button className="hidden sm:inline-flex" onClick={() => navigate("/request")} variant="ghost">
-              All request options
+              Open request form
               <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </div>

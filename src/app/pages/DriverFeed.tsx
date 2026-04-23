@@ -9,9 +9,7 @@ import {
   Clock,
   DollarSign,
   Car,
-  Package,
   UtensilsCrossed,
-  BookOpen,
   Bell,
   ShieldCheck,
 } from "lucide-react";
@@ -30,8 +28,6 @@ import { canSendBrowserNotifications, sendBrowserNotification } from "../lib/not
 const typeLabels: Record<string, string> = {
   food: "Food Delivery",
   ride: "Ride",
-  moving: "Moving Help",
-  tutor: "Tutoring",
 };
 
 export function DriverFeed() {
@@ -121,8 +117,7 @@ export function DriverFeed() {
   function getTypeIcon(type: string) {
     if (type === "food") return UtensilsCrossed;
     if (type === "ride") return Car;
-    if (type === "moving") return Package;
-    return BookOpen;
+    return DollarSign;
   }
 
   function getTypeColor(type: string) {
@@ -131,8 +126,6 @@ export function DriverFeed() {
         return "bg-[var(--gold-soft)] text-[var(--brand-maroon)]";
       case "food":
         return "bg-[var(--surface-tint)] text-[var(--brand-maroon)]";
-      case "moving":
-        return "bg-[var(--gold-soft)] text-[var(--brand-accent)]";
       default:
         return "bg-[var(--surface-tint)] text-[var(--brand-accent)]";
     }
@@ -230,8 +223,6 @@ export function DriverFeed() {
                 <SelectItem value="all">All Job Types</SelectItem>
                 <SelectItem value="food">Order Pickups</SelectItem>
                 <SelectItem value="ride">Rides</SelectItem>
-                <SelectItem value="moving">Moving</SelectItem>
-                <SelectItem value="tutor">Tutoring</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -75,8 +75,6 @@ export function QuickRequestButton() {
               <SelectContent>
                 <SelectItem value="food">Food Delivery</SelectItem>
                 <SelectItem value="ride">Ride</SelectItem>
-                <SelectItem value="moving">Moving Help</SelectItem>
-                <SelectItem value="tutor">Tutoring</SelectItem>
               </SelectContent>
             </Select>
           </div>

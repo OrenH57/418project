@@ -2,17 +2,19 @@
 // Public landing-page collage graphic.
 // Uses a compact food-and-delivery layout that stays readable on phones.
 
+const baseUrl = import.meta.env.BASE_URL;
+
 const restaurantImages = [
-  { name: "Morris's Cafe", src: "/landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg" },
-  { name: "The Corner Deli", src: "/landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg" },
-  { name: "Umai Fusion", src: "/landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg" },
-  { name: "The Spread", src: "/landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg" },
-  { name: "Baba's Pizza", src: "/landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg" },
-  { name: "Greens To Go", src: "/landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg" },
-  { name: "Zoca", src: "/landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg" },
-  { name: "Jamal's Chicken", src: "/landing-food/20c98794-cc03-4205-b3fa-1343b6f211c9.jpeg" },
-  { name: "Yella's", src: "/landing-food/7309b43d-f500-477e-8585-c61ccd069e52.jpeg" },
-  { name: "The Halal Shack", src: "/landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg" },
+  { name: "Morris's Cafe", src: `${baseUrl}landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg` },
+  { name: "The Corner Deli", src: `${baseUrl}landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg` },
+  { name: "Umai Fusion", src: `${baseUrl}landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg` },
+  { name: "The Spread", src: `${baseUrl}landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg` },
+  { name: "Baba's Pizza", src: `${baseUrl}landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg` },
+  { name: "Greens To Go", src: `${baseUrl}landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg` },
+  { name: "Zoca", src: `${baseUrl}landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg` },
+  { name: "Jamal's Chicken", src: `${baseUrl}landing-food/20c98794-cc03-4205-b3fa-1343b6f211c9.jpeg` },
+  { name: "Yella's", src: `${baseUrl}landing-food/7309b43d-f500-477e-8585-c61ccd069e52.jpeg` },
+  { name: "The Halal Shack", src: `${baseUrl}landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg` },
 ];
 
 export function LandingHeroGraphic() {

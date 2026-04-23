@@ -40,7 +40,7 @@ export function Layout() {
             </div>
             <div>
               <p className="font-semibold text-[var(--ink)]">CampusConnect</p>
-              <p className="text-xs text-[var(--muted)]">Simple campus help</p>
+              <p className="text-xs text-[var(--muted)]">Food delivery and rides</p>
             </div>
           </button>
 
@@ -60,7 +60,7 @@ export function Layout() {
             </Button>
             {user ? (
               <Badge className="hidden sm:inline-flex" variant="secondary">
-                {preferredView === "courier" ? "Courier" : "Requester"}
+                {preferredView === "courier" ? "Courier" : "Customer"}
               </Badge>
             ) : null}
             <Button
