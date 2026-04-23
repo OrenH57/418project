@@ -28,12 +28,6 @@ export const ualbanyRestaurants = [
   "Yellas",
   "Zoca",
 ];
-
-export const APP_URL = process.env.PUBLIC_APP_URL || "http://127.0.0.1:4173";
-export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-export const STRIPE_PUBLISHABLE_KEY = process.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
-export const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID || process.env.VITE_AZURE_CLIENT_ID || "";
-export const AZURE_TENANT_ID = process.env.AZURE_TENANT_ID || process.env.VITE_AZURE_TENANT_ID || "";
 export const MIN_PAYMENT_OFFER = 4;
 export const DISCOUNT_RATE = 0.4;
 
@@ -56,4 +50,24 @@ export async function loadEnv() {
       // optional env file
     }
   }
+}
+
+export function getAppUrl() {
+  return process.env.PUBLIC_APP_URL || "http://127.0.0.1:4173";
+}
+
+export function getStripeSecretKey() {
+  return process.env.STRIPE_SECRET_KEY || "";
+}
+
+export function getStripePublishableKey() {
+  return process.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
+}
+
+export function getAzureClientId() {
+  return process.env.AZURE_CLIENT_ID || process.env.VITE_AZURE_CLIENT_ID || "";
+}
+
+export function getAzureTenantId() {
+  return process.env.AZURE_TENANT_ID || process.env.VITE_AZURE_TENANT_ID || "";
 }

@@ -1,17 +1,20 @@
 // File purpose:
 // Stripe checkout helper for the local backend.
 
-import { APP_URL, STRIPE_SECRET_KEY } from "./config.mjs";
+import { getAppUrl, getStripeSecretKey } from "./config.mjs";
 
 export async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description }) {
-  if (!STRIPE_SECRET_KEY) {
+  const stripeSecretKey = getStripeSecretKey();
+  const appUrl = getAppUrl();
+
+  if (!stripeSecretKey) {
     throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env or .env.local.");
   }
 
   const form = new URLSearchParams();
   form.set("mode", "payment");
-  form.set("success_url", `${APP_URL}/messages/${requestId}?payment=success`);
-  form.set("cancel_url", `${APP_URL}/messages/${requestId}?payment=cancelled`);
+  form.set("success_url", `${appUrl}/messages/${requestId}?payment=success`);
+  form.set("cancel_url", `${appUrl}/messages/${requestId}?payment=cancelled`);
   form.set("customer_email", requesterEmail);
   form.set("line_items[0][price_data][currency]", "usd");
   form.set("line_items[0][price_data][product_data][name]", "CampusConnect delivery payment");
@@ -22,7 +25,7 @@ export async function createStripeCheckoutSession({ amount, requestId, requester
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+      Authorization: `Bearer ${stripeSecretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form,
