@@ -44,6 +44,8 @@ export type RequestRecord = {
   estimatedRetailTotal?: number;
   estimatedDiscountCost?: number;
   runnerEarnings?: number;
+  paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
+  paidAt?: string;
 };
 
 export type MessageRecord = {
@@ -94,6 +96,17 @@ export const api = {
       body: JSON.stringify(input),
     });
   },
+  outlookLogin(input: {
+    idToken: string;
+    role: "requester" | "courier";
+    phone?: string;
+    ualbanyIdImage?: string;
+  }) {
+    return request<{ token: string; user: User }>("/auth/outlook", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
   session(token: string) {
     return request<{ user: User }>("/session", {}, token);
   },
@@ -115,9 +128,10 @@ export const api = {
       orderEta?: string;
       orderScreenshot?: string;
       estimatedRetailTotal?: number;
+      startCheckout?: boolean;
     },
   ) {
-    return request<{ request: RequestRecord }>("/requests", {
+    return request<{ request: RequestRecord; checkoutUrl?: string }>("/requests", {
       method: "POST",
       body: JSON.stringify(input),
     }, token);
@@ -186,6 +200,16 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ requestId }),
+      },
+      token,
+    );
+  },
+  confirmCheckout(token: string, requestId: string, paymentState: "success" | "cancelled") {
+    return request<{ request: RequestRecord }>(
+      "/payments/confirm",
+      {
+        method: "POST",
+        body: JSON.stringify({ requestId, paymentState }),
       },
       token,
     );

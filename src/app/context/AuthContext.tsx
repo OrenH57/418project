@@ -20,6 +20,12 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithMicrosoft: (input: {
+    idToken: string;
+    role: "requester" | "courier";
+    phone?: string;
+    ualbanyIdImage?: string;
+  }) => Promise<void>;
   signup: (input: {
     name: string;
     email: string;
@@ -81,6 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       async login(email, password) {
         const response = await api.login({ email, password });
+        localStorage.setItem(TOKEN_KEY, response.token);
+        localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+        setToken(response.token);
+        setUser(response.user);
+      },
+      async loginWithMicrosoft(input) {
+        const response = await api.outlookLogin(input);
         localStorage.setItem(TOKEN_KEY, response.token);
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         setToken(response.token);

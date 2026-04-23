@@ -3,7 +3,7 @@
 
 import fs from "node:fs/promises";
 import { dataDir, dataFile, DISCOUNT_RATE, ualbanyRestaurants } from "./config.mjs";
-import { hashPassword } from "./auth.mjs";
+import { hashPassword, verifyPassword } from "./auth.mjs";
 
 export const seedData = {
   users: [
@@ -12,7 +12,7 @@ export const seedData = {
       name: "Ariana Green",
       email: "ariana.green@albany.edu",
       phone: "518-555-0141",
-      password: hashPassword("demo123"),
+      password: hashPassword("demo1234"),
       role: "requester",
       courierMode: false,
       ualbanyIdUploaded: false,
@@ -30,7 +30,7 @@ export const seedData = {
       name: "Marcus Hall",
       email: "marcus.hall@albany.edu",
       phone: "518-555-0188",
-      password: hashPassword("demo123"),
+      password: hashPassword("demo1234"),
       role: "courier",
       courierMode: true,
       ualbanyIdUploaded: true,
@@ -112,6 +112,14 @@ export async function readData() {
   const normalizedRestaurants = JSON.stringify(ualbanyRestaurants);
 
   for (const user of data.users) {
+    if (
+      (user.email === "ariana.green@albany.edu" || user.email === "marcus.hall@albany.edu") &&
+      typeof user.password === "string" &&
+      verifyPassword("demo123", user.password)
+    ) {
+      user.password = hashPassword("demo1234");
+      changed = true;
+    }
     if (typeof user.password === "string" && !user.password.includes(":")) {
       user.password = hashPassword(user.password);
       changed = true;
@@ -121,15 +129,35 @@ export async function readData() {
       changed = true;
     }
     if (typeof user.phone !== "string") {
-      user.phone = "";
+      user.phone = "518-555-0100";
+      changed = true;
+    }
+    if (typeof user.bio !== "string") {
+      user.bio = "UAlbany student account.";
+      changed = true;
+    }
+    if (typeof user.rating !== "number") {
+      user.rating = 5;
+      changed = true;
+    }
+    if (typeof user.completedJobs !== "number") {
+      user.completedJobs = 0;
+      changed = true;
+    }
+    if (typeof user.earnings !== "number") {
+      user.earnings = 0;
       changed = true;
     }
     if (typeof user.ualbanyIdUploaded !== "boolean") {
-      user.ualbanyIdUploaded = user.email === "marcus.hall@albany.edu";
+      user.ualbanyIdUploaded = Boolean(user.ualbanyIdImage) || user.email === "marcus.hall@albany.edu";
       changed = true;
     }
     if (typeof user.ualbanyIdImage !== "string") {
       user.ualbanyIdImage = user.email === "marcus.hall@albany.edu" ? "demo-ualbany-id-on-file" : "";
+      changed = true;
+    }
+    if (!user.ualbanyIdUploaded && typeof user.ualbanyIdImage === "string" && user.ualbanyIdImage.trim()) {
+      user.ualbanyIdUploaded = true;
       changed = true;
     }
     if (typeof user.notificationsEnabled !== "boolean") {

@@ -53,10 +53,10 @@ function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButton
       <p className="font-semibold text-[var(--ink)]">{label}</p>
       <p className="mt-1 text-sm text-[var(--muted)]">Suggested: {suggestedPrice}</p>
       {label === "Food Delivery" ? (
-        <p className="mt-2 text-xs text-[var(--muted)]">Best when the student already placed the GET order and just needs pickup.</p>
+        <p className="mt-2 text-xs text-[var(--muted)]">Best when you already ordered in GET and only need delivery.</p>
       ) : null}
-      {label === "Discount Dollar Run" ? (
-        <p className="mt-2 text-xs text-[var(--muted)]">Best when a student with extra Discount Dollars wants to earn the runner fee on a restaurant order.</p>
+      {label === "Discount Dollars (Coming Soon)" ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">Incoming feature. Delivery requests are the live flow right now.</p>
       ) : null}
     </button>
   );
@@ -98,6 +98,7 @@ export function RequestService() {
   const [housingBuilding, setHousingBuilding] = useState("");
   const [housingFloor, setHousingFloor] = useState("");
   const [housingDetails, setHousingDetails] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const needsDestination = serviceType === "ride" || serviceType === "food" || serviceType === "discount";
   const helperCopy = useMemo(() => getHelperCopy(serviceType), [serviceType]);
@@ -227,7 +228,7 @@ export function RequestService() {
     }
 
     if (serviceType === "discount" && !hasOrderScreenshot && !notes.trim()) {
-      toast.error("Add the restaurant items, or upload the GET confirmation screenshot.");
+      toast.error("Add the restaurant items so the runner knows what to order.");
       return;
     }
 
@@ -255,17 +256,16 @@ export function RequestService() {
           : buildFoodNotes(orderNumber, orderItems, notes)
         : serviceType === "discount"
         ? [
-            "Discount Dollar Run",
-            hasOrderScreenshot
-              ? "GET order screenshot uploaded."
-              : `Items and platform payment details: ${notes.trim()}`,
+            "Discount Dollars coming soon",
+            "This feature is being reworked and is not currently accepting new requests.",
           ]
             .filter(Boolean)
             .join("\n")
           : notes.trim();
 
     try {
-        await api.createRequest(token, {
+      setIsSubmitting(true);
+      const response = await api.createRequest(token, {
         serviceType,
         pickup,
         destination,
@@ -275,12 +275,20 @@ export function RequestService() {
         orderEta: orderEta.trim(),
         orderScreenshot,
         estimatedRetailTotal: Number.isFinite(estimatedRetailAmount) ? estimatedRetailAmount : undefined,
+        startCheckout: serviceType === "food",
       });
 
+      if (response.checkoutUrl) {
+        window.location.href = response.checkoutUrl;
+        return;
+      }
+
       toast.success("Order placed successfully!");
-      window.setTimeout(() => navigate("/app"), 700);
+      window.setTimeout(() => navigate(`/messages/${response.request.id}`), 700);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not post request.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -295,7 +303,7 @@ export function RequestService() {
         <Card>
           <CardHeader>
             <CardTitle>{helperCopy.title}</CardTitle>
-            <CardDescription>Place a UAlbany order so another student can accept it.</CardDescription>
+            <CardDescription>Fill out a short request so another student can help.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -318,13 +326,13 @@ export function RequestService() {
 
               {isFood ? (
                 <SectionCard
-                  description="Order in GET first, then come back here for the short delivery form."
+                  description="First order in GET, then come back here to request delivery."
                   title="2. Order details"
                 >
                   <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-                    <p className="font-medium text-[var(--ink)]">Simplest flow</p>
+                    <p className="font-medium text-[var(--ink)]">Simple food flow</p>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      1. Open GET in a new tab. 2. Place the food order. 3. Take a screenshot of the order confirmation. 4. Come back here and finish the delivery request.
+                      1. Open GET. 2. Place the order. 3. Take a screenshot of the confirmation. 4. Come back here and finish the delivery request.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
@@ -342,7 +350,7 @@ export function RequestService() {
                       </Button>
                     </div>
                     <p className="mt-2 text-xs text-[var(--muted)]">
-                      GET opens in a new tab so this page stays here when you come back. The screenshot is the fastest way to show the courier exactly what to pick up.
+                      GET opens in a new tab so this page stays here. The screenshot is the easiest way to show the courier what to pick up.
                     </p>
                   </div>
 
@@ -353,7 +361,7 @@ export function RequestService() {
                         <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
                           <label className="flex cursor-pointer items-center gap-3 text-sm text-[var(--ink)]" htmlFor="order-screenshot">
                             <ImagePlus className="h-4 w-4 text-[var(--brand-accent)]" />
-                            <span>Take a screenshot of your GET order confirmation and upload it here first. That is the easiest option.</span>
+                            <span>Upload a screenshot of your GET confirmation. This is the easiest option.</span>
                           </label>
                           <Input
                             accept="image/*"
@@ -394,7 +402,7 @@ export function RequestService() {
                           <Input
                             id="order-number"
                             onChange={(event) => setOrderNumber(event.target.value)}
-                            placeholder={hasOrderScreenshot ? "Optional if screenshot is uploaded" : "Pickup order number"}
+                            placeholder={hasOrderScreenshot ? "Optional if screenshot is uploaded" : "GET order number"}
                             value={orderNumber}
                           />
                         </div>
@@ -409,7 +417,7 @@ export function RequestService() {
                             placeholder={
                               hasOrderScreenshot
                                 ? "Optional if screenshot is uploaded"
-                                : "Quick item summary for the courier"
+                                : "Short item list for the courier"
                             }
                             rows={3}
                             value={orderItems}
@@ -430,73 +438,17 @@ export function RequestService() {
                 </SectionCard>
               ) : isDiscount ? (
                 <SectionCard
-                  description="If the order is already placed in GET, the restaurant is already paid. This page is just for the runner fee and handoff."
-                  title="2. What should the runner buy?"
+                  description="This feature is being prepared. Food delivery is the live ordering flow right now."
+                  title="2. Discount Dollars is coming soon"
                 >
-                  <div className="grid gap-4 md:grid-cols-[1fr_0.7fr]">
-                    <div>
-                      <Label htmlFor="pickup">{helperCopy.pickupLabel}</Label>
-                      <Input
-                        id="pickup"
-                        onChange={(event) => setPickup(event.target.value)}
-                        placeholder="Campus restaurant or cafe"
-                        value={pickup}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="estimated-retail-total">Estimated retail total *</Label>
-                      <Input
-                        id="estimated-retail-total"
-                        min="0"
-                        onChange={(event) => setEstimatedRetailTotal(event.target.value)}
-                        placeholder="15.57"
-                        step="0.01"
-                        type="number"
-                        value={estimatedRetailTotal}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="notes">Items to buy {hasOrderScreenshot ? "(optional)" : "*"}</Label>
-                    <Textarea
-                      id="notes"
-                      onChange={(event) => setNotes(event.target.value)}
-                      placeholder={
-                        hasOrderScreenshot
-                          ? "Optional if screenshot is uploaded"
-                          : "Which restaurant items should they order? Keep it simple."
-                      }
-                      rows={3}
-                      value={notes}
-                    />
-                  </div>
-
                   <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-                    <p className="font-medium text-[var(--ink)]">Estimated pricing</p>
+                    <p className="font-medium text-[var(--ink)]">What to use for now</p>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      If the GET order is already placed, the app payment below is the runner fee, not the restaurant charge again.
+                      If you already placed a campus restaurant order, use Food Delivery so a courier can pick it up and bring it to you.
                     </p>
-                    <div className="mt-3 grid gap-2 text-sm text-[var(--muted)] md:grid-cols-3">
-                      <div className="rounded-xl bg-white px-3 py-2">
-                        <p>Retail total</p>
-                        <p className="mt-1 font-medium text-[var(--ink)]">
-                          {Number.isFinite(estimatedRetailAmount) ? `$${estimatedRetailAmount.toFixed(2)}` : "--"}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-white px-3 py-2">
-                        <p>Discount Dollar cost</p>
-                        <p className="mt-1 font-medium text-[var(--ink)]">
-                          {estimatedDiscountCost !== null ? `$${estimatedDiscountCost.toFixed(2)}` : "--"}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-white px-3 py-2">
-                        <p>Runner earnings</p>
-                        <p className="mt-1 font-medium text-[var(--brand-accent)]">
-                          {estimatedRunnerEarnings !== null ? `$${estimatedRunnerEarnings.toFixed(2)}` : "--"}
-                        </p>
-                      </div>
-                    </div>
+                    <p className="mt-2 text-sm text-[var(--muted)]">
+                      Discount Dollars will come back later as its own lighter request flow.
+                    </p>
                   </div>
                 </SectionCard>
               ) : (
@@ -512,12 +464,12 @@ export function RequestService() {
                 <div className="space-y-4">
                   {isHousingDelivery ? (
                     <SectionCard
-                      description="Pick the area, then the building, then the outside meet spot."
+                      description="Pick your area first, then choose the building and meet spot."
                       title="3. Where should it go?"
                     >
                       <div>
                         <p className="text-sm text-[var(--muted)]">
-                          Residence halls usually need ID access, so meet spots stay outside.
+                          Residence halls usually need ID access, so handoff spots stay outside.
                         </p>
                       </div>
 
@@ -609,7 +561,7 @@ export function RequestService() {
                           </SelectContent>
                         </Select>
                         <p className="mt-1 text-xs text-[var(--muted)]">
-                          Couriers should meet outside since most residence halls need ID access. If you only know the quad or area, that is enough.
+                          Meet outside since most residence halls need ID access. If you only know the quad or area, that is enough.
                         </p>
                       </div>
 
@@ -671,7 +623,7 @@ export function RequestService() {
                   </div>
 
                   <div>
-                    <Label htmlFor="payment">How much will you pay? *</Label>
+                    <Label htmlFor="payment">Delivery fee you will pay *</Label>
                     <div className="relative">
                       <DollarSign className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
                       <Input
@@ -686,7 +638,7 @@ export function RequestService() {
                       />
                     </div>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      {isDiscount ? "Runner fee paid through the app" : "Minimum offer: $4"}
+                      {isDiscount ? "Coming soon" : "This is what the courier earns for the job. Minimum offer: $4."}
                     </p>
                   </div>
                 </div>
@@ -705,8 +657,14 @@ export function RequestService() {
                 ) : null}
               </SectionCard>
 
-              <Button className="w-full" size="lg" type="submit">
-                Place My Order
+              <Button className="w-full" disabled={isDiscount || isSubmitting} size="lg" type="submit">
+                {isDiscount
+                  ? "Discount Dollars Coming Soon"
+                  : isSubmitting
+                    ? "Opening Stripe..."
+                    : isFood
+                      ? "Place Order And Pay"
+                      : "Place My Order"}
               </Button>
             </form>
           </CardContent>

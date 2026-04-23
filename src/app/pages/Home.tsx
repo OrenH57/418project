@@ -2,39 +2,39 @@
 // Main requester landing page and lightweight dashboard.
 // Shows the simplest entry points for common student actions and the current request list.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  Search,
-  Car,
-  Package,
-  UtensilsCrossed,
+  ArrowRight,
   BookOpen,
-  MapPin,
+  Car,
+  ChevronRight,
   Clock,
   DollarSign,
-  Shield,
+  MapPin,
+  Package,
+  Sparkles,
+  Store,
+  TimerReset,
+  UtensilsCrossed,
 } from "lucide-react";
-import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { api, type RequestRecord } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "../components/ui/sonner";
 import { cn } from "../lib/cn";
-import { getStoredView, setStoredView } from "../lib/viewMode";
-import { appQuotes } from "../lib/content";
+import { getStoredView } from "../lib/viewMode";
 import { openGetMobile } from "../lib/getMobile";
 import { canSendBrowserNotifications, sendBrowserNotification } from "../lib/notifications";
-const KOSHER_ORDER_PATH = "/request?type=food&pickup=East%20Cafe";
 
 type QuickAction = {
   label: string;
   description: string;
+  detail: string;
   path: string;
   icon: LucideIcon;
   accentClassName: string;
@@ -43,63 +43,70 @@ type QuickAction = {
 const quickActions: QuickAction[] = [
   {
     label: "Order Food",
-    description: "Do not waste precious study time. Get your food brought straight to you.",
+    description: "Order in GET, then send a delivery request here.",
+    detail: "Most popular",
     path: "/request?type=food&pickup=Starbucks",
     icon: UtensilsCrossed,
     accentClassName: "bg-[var(--brand-maroon)] text-white",
   },
   {
-    label: "Dollar Run",
-    description: "Already ordered from a campus restaurant with GET? Let another student use extra Discount Dollars and bring it over.",
-    path: "/request?type=discount",
-    icon: DollarSign,
-    accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-accent)]",
-  },
-  {
     label: "Order a Ride",
-    description: "Cold out? Raining? Get a quick ride across campus without the long walk.",
+    description: "Request a quick ride across campus.",
+    detail: "Fastest option",
     path: "/request?type=ride",
     icon: Car,
     accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
   },
   {
     label: "Moving Help",
-    description: "Need help carrying bins, boxes, or dorm stuff? Get an extra set of hands.",
+    description: "Ask for help carrying boxes or bins.",
+    detail: "Heavy items",
     path: "/request?type=moving",
     icon: Package,
     accentClassName: "bg-[var(--surface-tint)] text-[var(--brand-maroon)]",
   },
   {
     label: "Find Tutor",
-    description: "Stuck before an exam? Find another student who can help you fast.",
+    description: "Find another student who can help fast.",
+    detail: "Academic support",
     path: "/request?type=tutor",
     icon: BookOpen,
     accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
   },
   {
-    label: "Campus Map",
-    description: "See the real campus drop-off zones before you post or accept a request.",
-    path: "/map",
-    icon: MapPin,
-    accentClassName: "bg-[var(--surface-tint)] text-[var(--brand-accent)]",
+    label: "Dollar Run",
+    description: "Discount Dollars support is coming soon.",
+    detail: "Coming soon",
+    path: "/app",
+    icon: DollarSign,
+    accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-accent)]",
   },
 ];
 
-const mainQuickActions = quickActions.filter((action) =>
-  ["Order Food", "Dollar Run", "Order a Ride"].includes(action.label),
-);
-
-const extraQuickActions = quickActions.filter((action) =>
-  ["Moving Help", "Find Tutor", "Campus Map"].includes(action.label),
-);
+const howItWorks = [
+  {
+    title: "Order in GET",
+    body: "Place your food order first so the courier knows it is ready for pickup.",
+    icon: Store,
+  },
+  {
+    title: "Send the delivery request",
+    body: "Choose your drop-off area, add the screenshot, and set the delivery fee.",
+    icon: Sparkles,
+  },
+  {
+    title: "Track everything here",
+    body: "Open messages and updates from the same page after you post it.",
+    icon: TimerReset,
+  },
+];
 
 const heroCopy = {
   badge: "UAlbany Campus Help",
-  title: "Order food, rides, and campus help without the extra campus trip.",
-  body: "Skip another frustrating walk back to the Campus Center and have another student bring what you need where you already are.",
-  subtext: "Built for the long class days, rainy nights, and finals weeks when one more trip across campus feels like too much.",
   primaryLabel: "Order Food",
   primaryPath: "/request?type=food&pickup=Starbucks",
+  secondaryLabel: "Get a Ride",
+  secondaryPath: "/request?type=ride",
 };
 
 function getRequestIcon(serviceType: string) {
@@ -121,17 +128,26 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
 
   return (
     <button
-      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+      className="rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)] p-0 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--brand-accent)] hover:shadow-lg"
       onClick={() => onOpen(action.path)}
       type="button"
     >
-      <div className="flex h-full flex-col justify-between gap-4 p-5">
-        <div className={cn("mx-auto flex h-12 w-12 items-center justify-center rounded-2xl", action.accentClassName)}>
-          <Icon className="h-6 w-6" />
+      <div className="flex h-full flex-col gap-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", action.accentClassName)}>
+            <Icon className="h-6 w-6" />
+          </div>
+          <Badge variant="secondary">{action.detail}</Badge>
         </div>
-        <div className="text-center">
+
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-[var(--ink)]">{action.label}</p>
           <p className="mt-1 text-sm leading-5 text-[var(--muted)]">{action.description}</p>
+        </div>
+
+        <div className="flex items-center justify-between text-sm font-medium text-[var(--brand-maroon)]">
+          <span>Continue</span>
+          <ArrowRight className="h-4 w-4 shrink-0" />
         </div>
       </div>
     </button>
@@ -198,7 +214,6 @@ function RequestCard({ request, onOpen }: { request: RequestRecord; onOpen: (id:
 export function Home() {
   const navigate = useNavigate();
   const { token, user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const previousRequestState = useRef<Record<string, string>>({});
   const preferredView = getStoredView();
@@ -278,202 +293,108 @@ export function Home() {
     };
   }, [preferredView, token, user]);
 
-  const filteredRequests = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return requests;
-
-    return requests.filter((request) =>
-      [request.serviceType, request.requesterName, request.pickup, request.destination, request.payment].some((value) =>
-        value.toLowerCase().includes(query),
-      ),
-    );
-  }, [requests, searchQuery]);
-
   return (
     <div className="min-h-screen bg-transparent">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <section className="mb-6 rounded-[2rem] border border-[var(--border)] bg-white p-6 shadow-sm">
-          <div className="mb-5 rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(92,29,54,0.97),rgba(92,29,54,0.84),rgba(199,162,74,0.72))] px-5 py-4 text-white">
-            <p className="text-xs uppercase tracking-[0.28em] text-white/75">UAlbany Student Courier Network</p>
-            <h2 className="mt-2 text-2xl font-semibold">{heroCopy.title}</h2>
-          </div>
-
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="text-center md:text-left">
+        <section className="mb-6 overflow-hidden rounded-[2rem] border border-[var(--border)] bg-white">
+          <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="p-5 sm:p-6 lg:p-8">
               <Badge className="mb-3" variant="secondary">
                 {heroCopy.badge}
               </Badge>
-              <h1 className="text-3xl font-bold text-[var(--ink)]">
-                Hi, {user?.name.split(" ")[0]}
+              <h1 className="max-w-2xl text-3xl font-bold leading-tight text-[var(--ink)] sm:text-5xl">
+                Easy campus delivery, rides, and help in a couple taps.
               </h1>
-              <p className="mt-2 max-w-2xl text-[var(--muted)]">
-                {heroCopy.body}
+              <p className="mt-3 max-w-2xl text-[var(--muted)]">
+                Hi, {user?.name.split(" ")[0]}. Pick what you need, send the request, and follow updates from one simple page.
               </p>
-              <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">
-                {heroCopy.subtext}
-              </p>
-            </div>
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center md:items-end">
-              <Button
-                onClick={() => openGetMobile()}
-                size="lg"
-                variant="secondary"
-              >
-                Open GET Ordering
-              </Button>
-              <Button
-                onClick={() => navigate(heroCopy.requester.primaryPath)}
-                size="lg"
-              >
-                {heroCopy.primaryLabel}
-              </Button>
-            </div>
-          </div>
 
-          <div className="mt-5 flex justify-end">
-            <button
-              className="rounded-full border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-2 text-sm font-medium text-[var(--brand-accent)] transition hover:border-[var(--brand-accent)] hover:bg-white"
-              onClick={() => {
-                if (!user?.ualbanyIdUploaded) {
-                  navigate("/profile?setup=courier");
-                  return;
-                }
-                setStoredView("courier");
-                navigate("/driver-feed");
-              }}
-              type="button"
-            >
-              Want to make extra cash? No car needed.
-            </button>
-          </div>
-        </section>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Button onClick={() => navigate(heroCopy.primaryPath)} size="lg">
+                  {heroCopy.primaryLabel}
+                </Button>
+                <Button onClick={() => navigate(heroCopy.secondaryPath)} size="lg" variant="secondary">
+                  {heroCopy.secondaryLabel}
+                </Button>
+                <Button onClick={() => openGetMobile()} size="lg" variant="outline">
+                  Open GET Ordering
+                </Button>
+              </div>
 
-        <section className="mb-8">
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <Card className="overflow-hidden border-none bg-[linear-gradient(120deg,rgba(92,29,54,0.98),rgba(122,47,96,0.92),rgba(199,162,74,0.86))] text-white shadow-sm">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-white/75">Campus Center to Campus Life</p>
-                  <h2 className="mt-2 text-2xl font-bold">Get what you need without the back-and-forth around campus.</h2>
-                  <p className="mt-2 max-w-2xl text-sm text-white/85">
-                    Food, rides, and small campus help from other UAlbany students who are already nearby.
-                  </p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-[var(--surface-tint)] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Most used</p>
+                  <p className="mt-1 font-semibold text-[var(--ink)]">Food delivery</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                    <UtensilsCrossed className="h-4 w-4" />
-                    Campus Center food
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                    <MapPin className="h-4 w-4" />
-                    Real campus drop-offs
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-sm">
-                    <Shield className="h-4 w-4" />
-                    UAlbany-only access
-                  </div>
+                <div className="rounded-2xl bg-[var(--surface-tint)] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Best for</p>
+                  <p className="mt-1 font-semibold text-[var(--ink)]">Busy class days</p>
                 </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              <Card className="border-[var(--border)]">
-                <CardContent className="p-5 text-center">
-                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-[var(--muted)]">Welcome Back</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[var(--ink)]">Stop wasting time on the same long campus trip.</h2>
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Order food, rides, and campus help in one place when you are busy, tired, or stuck far from the Campus Center.
-                  </p>
-                  <div className="mt-4 flex justify-center">
-                    <Button onClick={() => navigate("/request?type=food&pickup=Starbucks")} size="lg">
-                      Order Food
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="rounded-2xl bg-[var(--surface-tint)] px-5 py-4 text-center">
-                <p className="text-sm italic text-[var(--muted)]">
-                  "{appQuotes.requester}"
-                </p>
+                <div className="rounded-2xl bg-[var(--surface-tint)] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Simple flow</p>
+                  <p className="mt-1 font-semibold text-[var(--ink)]">Order, request, track</p>
+                </div>
               </div>
+            </div>
 
-              <div className="flex justify-end">
-                <button
-                  className="text-xs font-medium text-[var(--muted)] underline-offset-4 transition hover:text-[var(--brand-accent)] hover:underline"
-                  onClick={() => navigate(KOSHER_ORDER_PATH)}
-                  type="button"
-                >
-                  Need kosher food delivery? Start a small East Cafe order.
-                </button>
+            <div className="bg-[var(--surface-tint)] p-5 sm:p-6 lg:p-8">
+              <div className="rounded-[1.75rem] bg-[var(--brand-maroon)] p-5 text-white shadow-lg">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/70">How it works</p>
+                <div className="mt-4 space-y-4">
+                  {howItWorks.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.title} className="flex gap-3 rounded-2xl bg-white/10 p-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{item.title}</p>
+                          <p className="mt-1 text-sm leading-5 text-white/78">{item.body}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
         </section>
 
         <section className="mb-8">
-          <div className="relative">
-            <Search className="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-[var(--muted)]" />
-            <Input
-              className="h-12 pl-10 text-base"
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search your orders, pickup spots, and campus drop-offs"
-              value={searchQuery}
-            />
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-semibold text-[var(--ink)]">Choose what you need</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">Start from a big category instead of a search box.</p>
+            </div>
+            <Button className="hidden sm:inline-flex" onClick={() => navigate("/request")} variant="ghost">
+              All request options
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
           </div>
-        </section>
 
-        <section className="mb-8">
-          <h2 className="mb-4 font-semibold text-[var(--ink)]">Quick Actions</h2>
-          <Tabs defaultValue="main">
-            <TabsList className="mb-4 w-full sm:w-auto">
-              <TabsTrigger className="flex-1 sm:flex-none" value="main">
-                Main Services
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 sm:flex-none" value="more">
-                More Help
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="main">
-              <div className="mb-3 rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-                Order Food, Discount Dollar restaurant runs, and Order a Ride are the fastest ways to get help.
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {mainQuickActions.map((action) => (
-                  <QuickActionCard key={action.label} action={action} onOpen={(path) => navigate(path)} />
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="more">
-              <div className="mb-3 rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-                These are extra tools. Most students only need the first tab.
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {extraQuickActions.map((action) => (
-                  <QuickActionCard key={action.label} action={action} onOpen={(path) => navigate(path)} />
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {quickActions.map((action) => (
+              <QuickActionCard key={action.label} action={action} onOpen={(path) => navigate(path)} />
+            ))}
+          </div>
         </section>
 
         <section>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-[var(--ink)]">{requestSectionTitle}</h2>
-            <Button onClick={() => navigate("/map")} variant="link">
-              View Activity Map
-            </Button>
+            <div>
+              <h2 className="font-semibold text-[var(--ink)]">{requestSectionTitle}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">Your active and recent requests stay here.</p>
+            </div>
           </div>
 
           <div className="space-y-4">
-            {filteredRequests.map((request) => (
+            {requests.map((request) => (
               <RequestCard key={request.id} onOpen={(id) => navigate(`/messages/${id}`)} request={request} />
             ))}
           </div>
 
-          {filteredRequests.length === 0 ? (
+          {requests.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-[var(--muted)]">
                 {requestSectionEmptyState}

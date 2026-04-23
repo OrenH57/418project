@@ -8,7 +8,7 @@ export const DISCOUNT_RATE = 0.4;
 
 export const serviceTypes = [
   { value: "food", label: "Food Delivery", suggestedPrice: "$5-10" },
-  { value: "discount", label: "Discount Dollar Run", suggestedPrice: "$4-8 runner fee" },
+  { value: "discount", label: "Discount Dollars (Coming Soon)", suggestedPrice: "Launching soon" },
   { value: "ride", label: "Ride", suggestedPrice: "$5-15" },
   { value: "moving", label: "Moving Help", suggestedPrice: "$20-50" },
   { value: "tutor", label: "Tutoring", suggestedPrice: "$15-30/hr" },
@@ -149,11 +149,11 @@ export function getHelperCopy(serviceType: string) {
 
   if (serviceType === "discount") {
     return {
-      title: "Discount dollar order details",
-      pickupLabel: "Campus restaurant *",
-      destinationLabel: "Drop-off Location *",
-      destinationPlaceholder: "Dorm, lobby, or public meetup point",
-      notesPlaceholder: "List the restaurant items. The order is already paid in GET, and the app payment is just the runner fee.",
+      title: "Discount Dollars preview",
+      pickupLabel: "Campus restaurant",
+      destinationLabel: "Pickup location",
+      destinationPlaceholder: "Coming soon",
+      notesPlaceholder: "Discount Dollars is an incoming feature for future campus restaurant orders.",
     };
   }
 

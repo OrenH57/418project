@@ -2,12 +2,13 @@
 // Request-specific chat page used after a courier accepts a job.
 // Shows request details, contact info, payment actions, and the live message thread.
 
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Send, Phone, Shield, CreditCard, BellRing } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Send, Phone, Shield, CreditCard, BellRing, CheckCircle2, Clock3 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 import { api, type MessageRecord, type RequestRecord } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -16,10 +17,13 @@ import { toast } from "../components/ui/sonner";
 export function Messaging() {
   const navigate = useNavigate();
   const { requestId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token, user } = useAuth();
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [requestRecord, setRequestRecord] = useState<RequestRecord | null>(null);
+  const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
+  const hasProcessedPaymentRedirect = useRef(false);
 
   const title = useMemo(() => {
     if (!requestRecord) return `Request #${requestId ?? "unknown"}`;
@@ -42,6 +46,31 @@ export function Messaging() {
     void loadMessages();
   }, [requestId, token]);
 
+  useEffect(() => {
+    if (!token || !requestId || hasProcessedPaymentRedirect.current) return;
+
+    const paymentState = searchParams.get("payment");
+    if (paymentState !== "success" && paymentState !== "cancelled") return;
+
+    hasProcessedPaymentRedirect.current = true;
+
+    void (async () => {
+      try {
+        const response = await api.confirmCheckout(token, requestId, paymentState);
+        setRequestRecord(response.request);
+        await loadMessages();
+        toast.success(
+          paymentState === "success" ? "Stripe payment recorded for this request." : "Stripe checkout was cancelled.",
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not sync the Stripe payment result.");
+      } finally {
+        searchParams.delete("payment");
+        setSearchParams(searchParams, { replace: true });
+      }
+    })();
+  }, [loadMessages, requestId, searchParams, setSearchParams, token]);
+
   async function handleSend() {
     if (!token || !requestId || !draft.trim()) return;
 
@@ -58,10 +87,12 @@ export function Messaging() {
     if (!token || !requestId) return;
 
     try {
+      setIsCreatingCheckout(true);
       const response = await api.createCheckoutSession(token, requestId);
       window.location.href = response.url;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not start checkout.");
+      setIsCreatingCheckout(false);
     }
   }
 
@@ -79,6 +110,20 @@ export function Messaging() {
 
   const isRequester = Boolean(user && requestRecord && user.id === requestRecord.userId);
   const canMarkFoodReady = Boolean(requestRecord?.serviceType === "food" && isRequester && !requestRecord.foodReady);
+  const courierEarnings =
+    requestRecord?.serviceType === "discount" && typeof requestRecord?.runnerEarnings === "number"
+      ? requestRecord.runnerEarnings
+      : requestRecord
+        ? Number.parseFloat(requestRecord.payment)
+        : null;
+  const otherParticipantName = isRequester
+    ? requestRecord?.courierName || "Courier not assigned yet"
+    : requestRecord?.requesterName || "Requester";
+  const otherParticipantRole = isRequester ? "Courier" : "Requester";
+  const myRoleLabel = isRequester ? "Requester" : "Courier";
+  const paymentStatus = requestRecord?.paymentStatus || "unpaid";
+  const paymentLabel =
+    paymentStatus === "paid" ? "Paid in Stripe" : paymentStatus === "pending" ? "Stripe checkout started" : "Not paid yet";
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -92,16 +137,31 @@ export function Messaging() {
             <CardTitle>Chat details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
+            <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--muted)]">You are signed in as</p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-[var(--ink)]">{user?.name || "You"}</p>
+                  <p className="text-sm text-[var(--muted)]">{user?.phone || "--"}</p>
+                </div>
+                <Badge variant="secondary">{myRoleLabel}</Badge>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
               <Avatar>
-                <AvatarFallback>{requestRecord?.requesterName?.[0] ?? "S"}</AvatarFallback>
+                <AvatarFallback>{otherParticipantName[0] ?? "S"}</AvatarFallback>
               </Avatar>
               <div>
-                <p className="font-medium text-[var(--ink)]">{requestRecord?.requesterName ?? "Student partner"}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-[var(--ink)]">{otherParticipantName}</p>
+                  <Badge variant="outline">{otherParticipantRole}</Badge>
+                </div>
                 <p className="text-sm text-[var(--muted)]">
                   {requestRecord?.status === "accepted" ? "Active handoff in progress" : "Waiting for match"}
                 </p>
-                <p className="text-sm text-[var(--muted)]">Phone: {requestRecord?.requesterPhone || "--"}</p>
+                <p className="text-sm text-[var(--muted)]">
+                  Phone: {isRequester ? "--" : requestRecord?.requesterPhone || "--"}
+                </p>
               </div>
             </div>
             <div className="rounded-xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
@@ -143,9 +203,9 @@ export function Messaging() {
             ) : null}
             {requestRecord?.serviceType === "discount" ? (
               <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--ink)]">
-                <p className="font-medium">Discount Dollar pricing</p>
+                <p className="font-medium">Discount Dollars preview</p>
                 <p className="mt-1 text-[var(--muted)]">
-                  If the student already placed the GET order, the restaurant is already paid and the app payment is just the runner fee.
+                  This reflects an older Discount Dollars request. New Discount Dollars posting is being reworked and is currently shown as coming soon in the app.
                 </p>
                 <div className="mt-2 space-y-1 text-[var(--muted)]">
                   <p>
@@ -179,10 +239,35 @@ export function Messaging() {
                 />
               </div>
             ) : null}
-            <Button className="w-full" onClick={() => void handleCheckout()}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Pay Delivery Fee
-            </Button>
+            <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--ink)]">
+              <p className="font-medium">{isRequester ? "Delivery fee" : "Courier earnings"}</p>
+              <p className="mt-1 text-[var(--muted)]">
+                {isRequester
+                  ? "This is the amount tied to the request on the requester side."
+                  : "This is what you will earn for completing the job."}
+              </p>
+              <p className="mt-2 text-lg font-semibold text-[var(--brand-accent)]">
+                {courierEarnings !== null && Number.isFinite(courierEarnings)
+                  ? `$${courierEarnings.toFixed(2)}`
+                  : "--"}
+              </p>
+              {isRequester ? (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--surface-tint)] px-3 py-1 text-xs font-medium text-[var(--muted)]">
+                  {paymentStatus === "paid" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Clock3 className="h-3.5 w-3.5 text-amber-600" />}
+                  {paymentLabel}
+                </div>
+              ) : null}
+            </div>
+            {isRequester && requestRecord?.serviceType !== "food" ? (
+              <Button
+                className="w-full"
+                disabled={paymentStatus === "paid" || isCreatingCheckout}
+                onClick={() => void handleCheckout()}
+              >
+                <CreditCard className="mr-2 h-4 w-4" />
+                {paymentStatus === "paid" ? "Delivery Fee Paid" : isCreatingCheckout ? "Opening Stripe..." : "Pay Delivery Fee"}
+              </Button>
+            ) : null}
             <Button className="w-full" onClick={() => navigate(`/rate/${requestId ?? "1"}`)} variant="secondary">
               Leave Rating
             </Button>
@@ -213,6 +298,9 @@ export function Messaging() {
                         : "bg-[var(--gold-soft)] text-[var(--ink)]"
                     }`}
                   >
+                    <p className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${message.mine ? "text-white/75" : "text-[var(--muted)]"}`}>
+                      {message.mine ? `You · ${myRoleLabel}` : `${message.senderName} · ${otherParticipantRole}`}
+                    </p>
                     <p>{message.text}</p>
                     <p className={`mt-1 text-xs ${message.mine ? "text-white/75" : "text-[var(--muted)]"}`}>
                       {message.time}

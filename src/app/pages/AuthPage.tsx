@@ -1,9 +1,10 @@
 // File purpose:
 // Combined login and signup screen.
-// Lets students log in or sign up, then choose which side of the app should open first.
+// Lets students log in or sign up for the side they already chose on the landing page.
 
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useMsal } from "@azure/msal-react";
 import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
@@ -11,36 +12,44 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { LandingHeroGraphic } from "../components/LandingHeroGraphic";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "../components/ui/sonner";
-import { getDefaultPath, getStoredView, setStoredView } from "../lib/viewMode";
+import { getDefaultPath, setStoredView } from "../lib/viewMode";
+import { isMicrosoftAuthConfigured, microsoftLoginRequest } from "../lib/microsoftAuth";
 
-const entryOptionCopy = {
+const sideCopy = {
   requester: {
-    title: "Order delivery or request service",
-    description: "Start on the student side for food delivery, rides, and campus services.",
+    badge: "Ordering side",
+    title: "Place an order",
+    description: "Sign in to order food, request rides, and ask for campus help.",
   },
   courier: {
-    title: "I want to deliver or use extra Discount Dollars",
-    description: "Start on the courier side for jobs and restaurant pickup runs.",
+    badge: "Deliverer side",
+    title: "Become a deliverer",
+    description: "Sign in to take nearby delivery jobs and earn quick money between classes.",
   },
 };
 
 export function AuthPage() {
   const navigate = useNavigate();
-  const { user, login, signup } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { instance } = useMsal();
+  const { user, login, loginWithMicrosoft, signup } = useAuth();
+  const sideParam = searchParams.get("side");
+  const initialEntryView = sideParam === "courier" ? "courier" : "requester";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [ualbanyIdImage, setUalbanyIdImage] = useState("");
-  const [entryView, setEntryView] = useState<"requester" | "courier">(() => getStoredView());
+  const entryView = initialEntryView;
   const [busy, setBusy] = useState(false);
+  const currentSideCopy = sideCopy[entryView];
 
   if (user) {
-    const savedView = getStoredView();
-    return <Navigate replace to={getDefaultPath(savedView)} />;
+    return <Navigate replace to={getDefaultPath(entryView)} />;
   }
 
   async function handleIdImageChange(event: ChangeEvent<HTMLInputElement>) {
@@ -112,21 +121,59 @@ export function AuthPage() {
     }
   }
 
+  async function handleMicrosoftLogin() {
+    try {
+      setBusy(true);
+
+      if (!isMicrosoftAuthConfigured) {
+        throw new Error("Microsoft sign-in is not configured yet. Add the Azure client and tenant IDs in .env.local.");
+      }
+
+      if (mode === "signup" && entryView === "courier" && !ualbanyIdImage) {
+        throw new Error("Upload a photo of your UAlbany ID before opening the courier side.");
+      }
+
+      const response = await instance.loginPopup(microsoftLoginRequest);
+      const idToken = response.idToken;
+
+      if (!idToken) {
+        throw new Error("Microsoft sign-in finished without an ID token.");
+      }
+
+      await loginWithMicrosoft({
+        idToken,
+        role: entryView,
+        phone: phone.trim() || undefined,
+        ualbanyIdImage: entryView === "courier" ? ualbanyIdImage : undefined,
+      });
+
+      setStoredView(entryView);
+      toast.success("Signed in with your UAlbany Microsoft account.");
+      navigate(getDefaultPath(entryView), { replace: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Microsoft sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const showCourierIdUpload = mode === "signup" && entryView === "courier";
+
   return (
-    <div className="min-h-screen bg-[var(--page-bg)] px-4 py-8">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <Card className="overflow-hidden border-none bg-[var(--brand-maroon)] text-white shadow-xl">
-          <CardContent className="p-8">
-            <Badge className="mb-4 bg-white/15 text-white">UAlbany Prototype</Badge>
-            <h1 className="max-w-xl text-4xl font-bold leading-tight">
+    <div className="min-h-screen bg-[var(--page-bg)] px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto grid max-w-7xl items-start gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(24rem,28rem)] xl:gap-8">
+        <Card className="order-2 overflow-hidden border-none bg-[var(--brand-maroon)] text-white shadow-xl xl:order-1">
+          <CardContent className="p-5 sm:p-8 lg:p-9">
+            <Badge className="mb-3 bg-white/15 text-white sm:mb-4">UAlbany Prototype</Badge>
+            <h1 className="max-w-xl text-2xl font-bold leading-tight sm:text-4xl">
               Student delivery for Campus Center restaurants that only offer pickup.
             </h1>
-            <p className="mt-4 max-w-2xl text-white/85">
+            <p className="mt-3 max-w-xl text-sm text-white/85 sm:mt-4 sm:text-base">
               CampusConnect lets students order from UAlbany Campus Center spots, post a delivery
               request, and have another student courier bring it across campus.
             </p>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="mt-5 hidden gap-3 sm:grid md:grid-cols-3 sm:gap-4 sm:mt-8">
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <UtensilsCrossed className="mb-3 h-5 w-5" />
                 <p className="font-semibold">Campus Center pickup</p>
@@ -135,7 +182,7 @@ export function AuthPage() {
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Bike className="mb-3 h-5 w-5" />
                 <p className="font-semibold">Courier mode</p>
-                <p className="mt-1 text-sm text-white/80">Students can switch into courier mode and accept nearby runs.</p>
+                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to the driver side to accept nearby runs.</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Shield className="mb-3 h-5 w-5" />
@@ -143,16 +190,20 @@ export function AuthPage() {
                 <p className="mt-1 text-sm text-white/80">Restricting accounts to campus email improves trust and safety.</p>
               </div>
             </div>
+
+            <div className="mt-4 hidden sm:block sm:mt-6">
+              <LandingHeroGraphic />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border)] bg-white shadow-sm">
-          <CardHeader>
-            <div className="flex gap-2">
-              <Button onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
+        <Card className="order-1 border-[var(--border)] bg-white shadow-sm xl:order-2 xl:sticky xl:top-6">
+          <CardHeader className="p-5 sm:p-6">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="w-full" onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
                 Log In
               </Button>
-              <Button onClick={() => setMode("signup")} variant={mode === "signup" ? "default" : "secondary"}>
+              <Button className="w-full" onClick={() => setMode("signup")} variant={mode === "signup" ? "default" : "secondary"}>
                 Sign Up
               </Button>
             </div>
@@ -160,83 +211,23 @@ export function AuthPage() {
               {mode === "login" ? "Sign in to your campus account" : "Create your campus account"}
             </CardTitle>
             <CardDescription>
-              Explore first if you want. Only sign in when you are ready to place an order or take jobs.
+              {currentSideCopy.description}
             </CardDescription>
             <p className="mt-2 text-sm text-[var(--muted)]">
               <Link className="text-[var(--brand-accent)] underline-offset-4 hover:underline" to="/">
                 Back to the product overview
               </Link>
             </p>
-            {mode === "login" ? (
-              <div className="mt-4">
-                <Label>Open the app first as</Label>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  <button
-                    className={`rounded-2xl border p-4 text-left ${
-                      entryView === "requester"
-                        ? "border-[var(--brand-gold)] bg-[var(--gold-soft)]"
-                        : "border-[var(--border)]"
-                    }`}
-                    onClick={() => setEntryView("requester")}
-                    type="button"
-                  >
-                    <p className="font-semibold text-[var(--ink)]">{entryOptionCopy.requester.title}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">{entryOptionCopy.requester.description}</p>
-                  </button>
-                  <button
-                    className={`rounded-2xl border p-4 text-left ${
-                      entryView === "courier"
-                        ? "border-[var(--brand-gold)] bg-[var(--gold-soft)]"
-                        : "border-[var(--border)]"
-                    }`}
-                    onClick={() => setEntryView("courier")}
-                    type="button"
-                  >
-                    <p className="font-semibold text-[var(--ink)]">{entryOptionCopy.courier.title}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">{entryOptionCopy.courier.description}</p>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4">
-                <Label>Which side should open first?</Label>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  <button
-                    className={`rounded-2xl border p-4 text-left ${
-                      entryView === "requester"
-                        ? "border-[var(--brand-gold)] bg-[var(--gold-soft)]"
-                        : "border-[var(--border)]"
-                    }`}
-                    onClick={() => setEntryView("requester")}
-                    type="button"
-                  >
-                    <p className="font-semibold text-[var(--ink)]">{entryOptionCopy.requester.title}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {entryOptionCopy.requester.description}
-                    </p>
-                  </button>
-                  <button
-                    className={`rounded-2xl border p-4 text-left ${
-                      entryView === "courier"
-                        ? "border-[var(--brand-gold)] bg-[var(--gold-soft)]"
-                        : "border-[var(--border)]"
-                    }`}
-                    onClick={() => setEntryView("courier")}
-                    type="button"
-                  >
-                    <p className="font-semibold text-[var(--ink)]">{entryOptionCopy.courier.title}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {entryOptionCopy.courier.description}
-                    </p>
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-[var(--muted)]">
-                  This only chooses which side opens first. You can switch sides later.
-                </p>
-              </div>
-            )}
+            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
+              <Badge variant="secondary">{currentSideCopy.badge}</Badge>
+              <p className="mt-3 font-semibold text-[var(--ink)]">{currentSideCopy.title}</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{currentSideCopy.description}</p>
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Need the other side instead? Go back and choose the other path.
+              </p>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
             <form
               className="space-y-4"
               onSubmit={(event) => {
@@ -266,7 +257,7 @@ export function AuthPage() {
                     Couriers can use this if they need to reach you during pickup or drop-off.
                   </p>
                 </div>
-                {entryView === "courier" ? (
+                {showCourierIdUpload ? (
                   <div>
                     <Label htmlFor="ualbany-id">UAlbany ID photo</Label>
                     <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-4">
@@ -333,11 +324,31 @@ export function AuthPage() {
               {busy ? "Please wait..." : mode === "login" ? "Log In" : "Create Account"}
             </Button>
 
+            <Button
+              className="w-full"
+              disabled={busy || !isMicrosoftAuthConfigured}
+              onClick={() => {
+                void handleMicrosoftLogin();
+              }}
+              size="lg"
+              type="button"
+              variant="secondary"
+            >
+              {busy ? "Please wait..." : "Continue with UAlbany Microsoft"}
+            </Button>
+
+            {!isMicrosoftAuthConfigured ? (
+              <p className="text-xs text-[var(--muted)]">
+                Microsoft sign-in becomes available after `VITE_AZURE_CLIENT_ID` and `VITE_AZURE_TENANT_ID`
+                are added to `.env.local`.
+              </p>
+            ) : null}
+
             {mode === "login" ? (
               <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
                 <p className="font-medium text-[var(--ink)]">Demo accounts</p>
-                <p className="mt-1">`ariana.green@albany.edu` / `demo123`</p>
-                <p>`marcus.hall@albany.edu` / `demo123`</p>
+                <p className="mt-1">`ariana.green@albany.edu` / `demo1234`</p>
+                <p>`marcus.hall@albany.edu` / `demo1234`</p>
               </div>
             ) : null}
             </form>

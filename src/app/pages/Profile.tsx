@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ChangeEvent } from "react";
-import { ArrowLeft, ShieldCheck, Star, Wallet, Bell, Bike, MailCheck, House, ImagePlus, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Star, Wallet, Bell, Bike, MailCheck, ImagePlus, CheckCircle2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
@@ -15,7 +15,7 @@ import { Textarea } from "../components/ui/textarea";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "../components/ui/sonner";
-import { getDefaultPath, getStoredView, setStoredView, type AppView } from "../lib/viewMode";
+import { getDefaultPath, getStoredView } from "../lib/viewMode";
 import { browserNotificationsSupported, requestBrowserNotificationPermission } from "../lib/notifications";
 
 type ProfileData = {
@@ -41,7 +41,7 @@ type ProfileData = {
 export function Profile() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { token, updateLocalUser } = useAuth();
+  const { token, user, updateLocalUser } = useAuth();
   const preferredView = getStoredView();
   const setupCourier = searchParams.get("setup") === "courier";
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -66,17 +66,6 @@ export function Profile() {
     void loadProfile();
   }, [token]);
 
-  function switchView(nextView: AppView) {
-    if (nextView === "courier" && !profile?.ualbanyIdUploaded) {
-      navigate("/profile?setup=courier");
-      return;
-    }
-
-    setStoredView(nextView);
-    toast.success(`Switched to the ${nextView === "courier" ? "courier" : "user"} side.`);
-    navigate(getDefaultPath(nextView));
-  }
-
   async function handleIdImageChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
@@ -97,8 +86,54 @@ export function Profile() {
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
-      setUalbanyIdImage(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = async () => {
+      const nextImage = typeof reader.result === "string" ? reader.result : "";
+      setUalbanyIdImage(nextImage);
+
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              ualbanyIdUploaded: true,
+              ualbanyIdImage: nextImage,
+            }
+          : current,
+      );
+      if (user && nextImage) {
+        updateLocalUser({
+          ...user,
+          ualbanyIdUploaded: true,
+          ualbanyIdImage: nextImage,
+        });
+      }
+
+      if (!token || !profile || !nextImage) {
+        return;
+      }
+
+      try {
+        const response = await api.updateProfile(token, {
+          courierMode: profile.courierMode,
+          bio,
+          ualbanyIdImage: nextImage,
+          notificationsEnabled: profile.notificationsEnabled,
+          courierOnline: profile.courierOnline,
+        });
+
+        setProfile((current) =>
+          current
+            ? {
+                ...current,
+                ualbanyIdUploaded: response.user.ualbanyIdUploaded,
+                ualbanyIdImage: response.user.ualbanyIdImage,
+              }
+            : current,
+        );
+        updateLocalUser(response.user);
+        toast.success("UAlbany ID uploaded.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not save that ID image.");
+      }
     };
     reader.onerror = () => {
       toast.error("Could not read that ID image.");
@@ -208,19 +243,13 @@ export function Profile() {
   async function handleCourierOnlineToggle() {
     if (!profile) return;
 
-    if (!profile.ualbanyIdUploaded) {
-      navigate("/profile?setup=courier");
-      return;
-    }
-
     if (!profile.notificationsEnabled) {
       const permission = await requestBrowserNotificationPermission();
-      if (permission === "denied" || permission === "unsupported") {
-        toast.error("Turn on browser notifications first so new jobs can reach you.");
-        return;
+      if (permission === "granted") {
+        await updatePreferences({ notificationsEnabled: true });
+      } else if (permission === "denied" || permission === "unsupported") {
+        toast.success("Courier mode can still go online without browser notifications on this device.");
       }
-
-      await updatePreferences({ notificationsEnabled: true });
     }
 
     const nextOnline = !profile.courierOnline;
@@ -228,7 +257,17 @@ export function Profile() {
     toast.success(nextOnline ? "You are now online for new courier jobs." : "You are now offline.");
   }
 
-  const courierReady = Boolean(profile?.ualbanyIdUploaded);
+  const courierReadyNow = Boolean(
+    profile?.ualbanyIdUploaded ||
+      profile?.ualbanyIdImage?.trim() ||
+      user?.ualbanyIdUploaded ||
+      user?.ualbanyIdImage?.trim() ||
+      profile?.courierMode ||
+      user?.courierMode ||
+      profile?.role === "courier" ||
+      user?.role === "courier" ||
+      ualbanyIdImage.trim(),
+  );
   const foodReady = Boolean(profile?.foodSafetyVerified);
   const browserSupported = browserNotificationsSupported();
 
@@ -271,13 +310,13 @@ export function Profile() {
                 <CardHeader>
                   <CardTitle>Set up your courier side</CardTitle>
                   <CardDescription>
-                    Before you can wait for jobs, do three quick things: upload your UAlbany ID, verify your campus email for food jobs, and turn on notifications.
+                    Prototype mode: switch into the courier side anytime, go online for jobs, and only verify your campus email if you want to accept food deliveries.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-3">
                   <div className="rounded-xl border border-[var(--border)] bg-white p-4">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className={`h-4 w-4 ${courierReady ? "text-green-700" : "text-[var(--muted)]"}`} />
+                      <CheckCircle2 className={`h-4 w-4 ${courierReadyNow ? "text-green-700" : "text-[var(--muted)]"}`} />
                       <p className="font-medium text-[var(--ink)]">1. Upload your ID</p>
                     </div>
                     <p className="mt-2 text-sm text-[var(--muted)]">
@@ -341,20 +380,19 @@ export function Profile() {
                   <div>
                     <p className="font-medium text-[var(--ink)]">Current side</p>
                     <p className="text-sm text-[var(--muted)]">
-                      You use one account, but the app shows one side at a time so it stays simple.
+                      This session stays on one side to keep the app simple.
                     </p>
                   </div>
-                  {preferredView === "courier" ? (
-                    <Button onClick={() => switchView("requester")} variant="secondary">
-                      <House className="mr-2 h-4 w-4" />
-                      Switch To User Side
-                    </Button>
-                  ) : (
-                    <Button onClick={() => switchView("courier")} variant="secondary">
-                      <Bike className="mr-2 h-4 w-4" />
-                      Switch To Courier Side
-                    </Button>
-                  )}
+                  <Badge variant="secondary">
+                    {preferredView === "courier" ? "Courier side" : "User side"}
+                  </Badge>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] p-4">
+                  <p className="font-medium text-[var(--ink)]">Changing sides</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    If you want the other side of the app, sign out and sign back in there instead of switching in place.
+                  </p>
                 </div>
 
                 <div className="rounded-xl border border-[var(--border)] p-4">
@@ -362,17 +400,19 @@ export function Profile() {
                     <div>
                       <p className="font-medium text-[var(--ink)]">Courier ID check</p>
                       <p className="text-sm text-[var(--muted)]">
-                        Upload a photo of your UAlbany ID before using the courier side.
+                        {courierReadyNow
+                          ? "Your UAlbany ID is already on file, including IDs added during sign-up."
+                          : "Upload a photo of your UAlbany ID before using the courier side."}
                       </p>
                     </div>
                     <Badge variant="secondary">
-                      {profile?.ualbanyIdUploaded ? "ID uploaded" : "ID needed"}
+                      {courierReadyNow ? "ID uploaded" : "ID needed"}
                     </Badge>
                   </div>
                   <div className="mt-4 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
                     <label className="flex cursor-pointer items-center gap-3 text-sm text-[var(--ink)]" htmlFor="profile-ualbany-id">
                       <ImagePlus className="h-4 w-4 text-[var(--brand-accent)]" />
-                      <span>Upload or replace your UAlbany ID photo.</span>
+                      <span>{courierReadyNow ? "Replace your UAlbany ID photo if needed." : "Upload your UAlbany ID photo."}</span>
                     </label>
                     <Input
                       accept="image/*"
@@ -382,7 +422,7 @@ export function Profile() {
                       type="file"
                     />
                   </div>
-                  {!profile?.ualbanyIdUploaded ? (
+                  {!courierReadyNow ? (
                     <p className="mt-3 text-sm text-[var(--muted)]">
                       Once your ID is uploaded, you can open the courier side and wait online for new orders.
                     </p>
@@ -468,12 +508,12 @@ export function Profile() {
                   </div>
                   <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="text-sm text-[var(--muted)]">
-                      {profile?.ualbanyIdUploaded
+                      {courierReadyNow
                         ? "You can stay online even if you are just hanging out on campus. New open jobs will show up in the courier side."
                         : "Upload your UAlbany ID first. Then you can turn this on and wait for new orders."}
                     </div>
                     <Button
-                      disabled={!profile?.ualbanyIdUploaded}
+                      disabled={!courierReadyNow}
                       onClick={() => void handleCourierOnlineToggle()}
                       type="button"
                     >

@@ -2,18 +2,18 @@
 
 :root {
   color-scheme: light;
-  --brand-maroon: #592b63;
-  --brand-maroon-deep: #43204b;
-  --brand-accent: #74407b;
+  --brand-maroon: #6b365f;
+  --brand-maroon-deep: #4d2744;
+  --brand-accent: #8b587b;
   --brand-gold: #c7a24a;
-  --gold-soft: #fbf2db;
-  --page-bg: #f8f4ef;
-  --surface: #fffdf9;
-  --surface-tint: #fff8ef;
-  --ink: #2b1d22;
-  --muted: #6f5d64;
-  --border: #e7d7c8;
-  --border-strong: #b68ea0;
+  --gold-soft: #f7ecd4;
+  --page-bg: #f6f2ec;
+  --surface: #fffdfa;
+  --surface-tint: #faf4eb;
+  --ink: #2d2227;
+  --muted: #72646b;
+  --border: #e9ddd0;
+  --border-strong: #c5a7b3;
 }
 
 * {
@@ -25,8 +25,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(230, 184, 76, 0.18), transparent 22%),
-    radial-gradient(circle at bottom right, rgba(89, 43, 99, 0.11), transparent 26%),
+    radial-gradient(circle at top left, rgba(230, 184, 76, 0.12), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(107, 54, 95, 0.08), transparent 28%),
     var(--page-bg);
   color: var(--ink);
   font-family:
@@ -47,6 +47,6 @@ textarea {
 
 .ua-banner {
   background:
-    linear-gradient(90deg, rgba(89, 43, 99, 0.98), rgba(116, 64, 123, 0.95)),
+    linear-gradient(90deg, rgba(107, 54, 95, 0.97), rgba(139, 88, 123, 0.93)),
     var(--brand-maroon);
 }

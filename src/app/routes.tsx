@@ -5,7 +5,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Home } from "./pages/Home";
 import { RequestService } from "./pages/RequestService";
-import { MapView } from "./pages/MapView";
 import { DriverFeed } from "./pages/DriverFeed";
 import { Messaging } from "./pages/Messaging";
 import { Profile } from "./pages/Profile";
@@ -32,7 +31,6 @@ export const router = createBrowserRouter([
         children: [
           { path: "app", Component: Home },
           { path: "request", Component: RequestService },
-          { path: "map", Component: MapView },
           { path: "driver-feed", Component: DriverFeed },
           { path: "messages/:requestId", Component: Messaging },
           { path: "profile", Component: Profile },

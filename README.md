@@ -5,10 +5,9 @@ CampusConnect is a UAlbany student-to-student campus service app prototype.
 ## What the app includes
 
 - food pickup from GET / Campus Center restaurants
-- discount dollar runs
+- Discount Dollars marked as a coming-soon feature
 - rides and campus help requests
 - courier-side job acceptance and chat
-- a frontend campus map for campus delivery zones
 
 ## Local development
 
@@ -24,14 +23,30 @@ Backend:
 npm run dev:server
 ```
 
+Stripe test checkout:
+
+```bash
+copy .env.example .env
+```
+
+Then fill in:
+
+- `PUBLIC_APP_URL` with your frontend URL
+- `VITE_STRIPE_PUBLISHABLE_KEY` with your Stripe publishable test key
+- `STRIPE_SECRET_KEY` with your Stripe secret test key
+
+The backend reads both `.env` and `.env.local`, so either works.
+
+For food pickup requests, the requester now pays in Stripe immediately when the order is submitted. After Stripe returns, the request opens in the chat page with payment status shown there.
+
 ## Team sharing notes
 
 - Do not share `.env.local`
 - Do not commit `server/data/app-data.json`
 - The app now includes a clean demo data file, so each teammate can start from the same baseline
 - Demo accounts:
-  - `ariana.green@albany.edu` / `demo123`
-  - `marcus.hall@albany.edu` / `demo123`
+  - `ariana.green@albany.edu` / `demo1234`
+  - `marcus.hall@albany.edu` / `demo1234`
 
 ## GitHub Pages
 

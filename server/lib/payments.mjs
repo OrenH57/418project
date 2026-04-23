@@ -5,7 +5,7 @@ import { APP_URL, STRIPE_SECRET_KEY } from "./config.mjs";
 
 export async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description }) {
   if (!STRIPE_SECRET_KEY) {
-    throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env.local.");
+    throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env or .env.local.");
   }
 
   const form = new URLSearchParams();

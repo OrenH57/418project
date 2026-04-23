@@ -9,8 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const serverDir = path.resolve(__dirname, "..");
-export const dataDir = path.join(serverDir, "data");
-export const dataFile = path.join(dataDir, "app-data.json");
+export const dataDir = process.env.CAMPUSCONNECT_DATA_DIR || path.join(serverDir, "data");
+export const dataFile = process.env.CAMPUSCONNECT_DATA_FILE || path.join(dataDir, "app-data.json");
 export const rootDir = path.resolve(serverDir, "..");
 
 export const ualbanyRestaurants = [
@@ -19,6 +19,7 @@ export const ualbanyRestaurants = [
   "Fiamma",
   "Greens To Go",
   "Jamals Chicken",
+  "Kosher Dining Hall",
   "Nikos Cafe",
   "Starbucks",
   "The Corner Deli",
@@ -30,24 +31,29 @@ export const ualbanyRestaurants = [
 
 export const APP_URL = process.env.PUBLIC_APP_URL || "http://127.0.0.1:4173";
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+export const STRIPE_PUBLISHABLE_KEY = process.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
+export const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID || process.env.VITE_AZURE_CLIENT_ID || "";
+export const AZURE_TENANT_ID = process.env.AZURE_TENANT_ID || process.env.VITE_AZURE_TENANT_ID || "";
 export const MIN_PAYMENT_OFFER = 4;
 export const DISCOUNT_RATE = 0.4;
 
 export async function loadEnv() {
-  try {
-    const raw = await fs.readFile(path.join(rootDir, ".env.local"), "utf8");
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const separator = trimmed.indexOf("=");
-      if (separator === -1) continue;
-      const key = trimmed.slice(0, separator).trim();
-      const value = trimmed.slice(separator + 1).trim();
-      if (!(key in process.env)) {
-        process.env[key] = value;
+  for (const envName of [".env", ".env.local"]) {
+    try {
+      const raw = await fs.readFile(path.join(rootDir, envName), "utf8");
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const separator = trimmed.indexOf("=");
+        if (separator === -1) continue;
+        const key = trimmed.slice(0, separator).trim();
+        const value = trimmed.slice(separator + 1).trim();
+        if (!(key in process.env)) {
+          process.env[key] = value;
+        }
       }
+    } catch {
+      // optional env file
     }
-  } catch {
-    // optional local env file
   }
 }

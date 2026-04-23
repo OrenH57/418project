@@ -7,6 +7,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import {
+  APP_URL,
+  AZURE_CLIENT_ID,
+  AZURE_TENANT_ID,
+  DISCOUNT_RATE,
+  MIN_PAYMENT_OFFER,
+  loadEnv,
+  ualbanyRestaurants,
+} from "./lib/config.mjs";
+import { createStripeCheckoutSession } from "./lib/payments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,46 +25,8 @@ const dataDir = path.join(__dirname, "data");
 const dataFile = path.join(dataDir, "app-data.json");
 const rootDir = path.resolve(__dirname, "..");
 
-async function loadEnv() {
-  try {
-    const raw = await fs.readFile(path.join(rootDir, ".env.local"), "utf8");
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const separator = trimmed.indexOf("=");
-      if (separator === -1) continue;
-      const key = trimmed.slice(0, separator).trim();
-      const value = trimmed.slice(separator + 1).trim();
-      if (!(key in process.env)) {
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // optional local env file
-  }
-}
-
 await loadEnv();
-
-const ualbanyRestaurants = [
-  "Baba's Pizza",
-  "Damor Chai Cafe",
-  "Fiamma",
-  "Greens To Go",
-  "Jamals Chicken",
-  "Nikos Cafe",
-  "Starbucks",
-  "The Corner Deli",
-  "The Halal Shack",
-  "The Spread",
-  "Yellas",
-  "Zoca",
-];
-
-const APP_URL = process.env.PUBLIC_APP_URL || "http://127.0.0.1:4173";
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const MIN_PAYMENT_OFFER = 4;
-const DISCOUNT_RATE = 0.4;
+const microsoftJwks = createRemoteJWKSet(new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"));
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -81,6 +54,37 @@ function isCampusEmail(email) {
   return email.endsWith(".edu") || email.endsWith("@albany.edu");
 }
 
+async function verifyMicrosoftIdToken(idToken) {
+  if (!AZURE_CLIENT_ID || !AZURE_TENANT_ID) {
+    throw new Error("Microsoft sign-in is not configured on the backend yet.");
+  }
+
+  const { payload } = await jwtVerify(idToken, microsoftJwks, {
+    audience: AZURE_CLIENT_ID,
+    issuer: [
+      `https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0`,
+      `https://sts.windows.net/${AZURE_TENANT_ID}/`,
+    ],
+  });
+
+  if (payload.tid !== AZURE_TENANT_ID) {
+    throw new Error("Only University at Albany Microsoft accounts are allowed.");
+  }
+
+  const email = String(
+    payload.preferred_username || payload.email || payload.upn || "",
+  ).trim().toLowerCase();
+
+  if (!email || !isCampusEmail(email)) {
+    throw new Error("Only campus Outlook addresses are allowed.");
+  }
+
+  return {
+    email,
+    name: String(payload.name || email.split("@")[0] || "UAlbany Student").trim(),
+  };
+}
+
 const seedData = {
   users: [
     {
@@ -88,11 +92,8 @@ const seedData = {
       name: "Ariana Green",
       email: "ariana.green@albany.edu",
       phone: "518-555-0141",
-      password: hashPassword("demo123"),
-<<<<<<< ours
+      password: hashPassword("demo1234"),
       authProvider: "password",
-=======
->>>>>>> theirs
       role: "requester",
       courierMode: false,
       ualbanyIdUploaded: false,
@@ -110,11 +111,8 @@ const seedData = {
       name: "Marcus Hall",
       email: "marcus.hall@albany.edu",
       phone: "518-555-0188",
-      password: hashPassword("demo123"),
-<<<<<<< ours
+      password: hashPassword("demo1234"),
       authProvider: "password",
-=======
->>>>>>> theirs
       role: "courier",
       courierMode: true,
       ualbanyIdUploaded: true,
@@ -191,6 +189,14 @@ async function readData() {
   let changed = false;
   const normalizedRestaurants = JSON.stringify(ualbanyRestaurants);
   for (const user of data.users) {
+    if (
+      (user.email === "ariana.green@albany.edu" || user.email === "marcus.hall@albany.edu") &&
+      typeof user.password === "string" &&
+      verifyPassword("demo123", user.password)
+    ) {
+      user.password = hashPassword("demo1234");
+      changed = true;
+    }
     if (typeof user.password === "string" && !user.password.includes(":")) {
       user.password = hashPassword(user.password);
       changed = true;
@@ -200,22 +206,39 @@ async function readData() {
       changed = true;
     }
     if (typeof user.phone !== "string") {
-      user.phone = "";
+      user.phone = "518-555-0100";
       changed = true;
     }
-<<<<<<< ours
+    if (typeof user.bio !== "string") {
+      user.bio = "UAlbany student account.";
+      changed = true;
+    }
+    if (typeof user.rating !== "number") {
+      user.rating = 5;
+      changed = true;
+    }
+    if (typeof user.completedJobs !== "number") {
+      user.completedJobs = 0;
+      changed = true;
+    }
+    if (typeof user.earnings !== "number") {
+      user.earnings = 0;
+      changed = true;
+    }
     if (user.authProvider !== "outlook" && user.authProvider !== "password") {
       user.authProvider = "password";
       changed = true;
     }
-=======
->>>>>>> theirs
     if (typeof user.ualbanyIdUploaded !== "boolean") {
-      user.ualbanyIdUploaded = user.email === "marcus.hall@albany.edu";
+      user.ualbanyIdUploaded = Boolean(user.ualbanyIdImage) || user.email === "marcus.hall@albany.edu";
       changed = true;
     }
     if (typeof user.ualbanyIdImage !== "string") {
       user.ualbanyIdImage = user.email === "marcus.hall@albany.edu" ? "demo-ualbany-id-on-file" : "";
+      changed = true;
+    }
+    if (!user.ualbanyIdUploaded && typeof user.ualbanyIdImage === "string" && user.ualbanyIdImage.trim()) {
+      user.ualbanyIdUploaded = true;
       changed = true;
     }
     if (typeof user.notificationsEnabled !== "boolean") {
@@ -276,6 +299,22 @@ async function readData() {
           : null;
       changed = true;
     }
+    if (request.paymentStatus !== "paid") {
+      const normalizedStatus =
+        request.paymentStatus === "pending" || request.paymentStatus === "failed" ? request.paymentStatus : "unpaid";
+      if (request.paymentStatus !== normalizedStatus) {
+        request.paymentStatus = normalizedStatus;
+        changed = true;
+      }
+    }
+    if (typeof request.paidAt !== "string") {
+      request.paidAt = "";
+      changed = true;
+    }
+    if (typeof request.stripeCheckoutSessionId !== "string") {
+      request.stripeCheckoutSessionId = "";
+      changed = true;
+    }
   }
 
   if (changed) {
@@ -309,10 +348,7 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     phone: user.phone || "",
-<<<<<<< ours
     authProvider: user.authProvider === "outlook" ? "outlook" : "password",
-=======
->>>>>>> theirs
     role: user.role,
     courierMode: user.courierMode,
     ualbanyIdUploaded: Boolean(user.ualbanyIdUploaded),
@@ -396,40 +432,6 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description }) {
-  if (!STRIPE_SECRET_KEY) {
-    throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env.local.");
-  }
-
-  const form = new URLSearchParams();
-  form.set("mode", "payment");
-  form.set("success_url", `${APP_URL}/messages/${requestId}?payment=success`);
-  form.set("cancel_url", `${APP_URL}/messages/${requestId}?payment=cancelled`);
-  form.set("customer_email", requesterEmail);
-  form.set("line_items[0][price_data][currency]", "usd");
-  form.set("line_items[0][price_data][product_data][name]", "CampusConnect delivery payment");
-  form.set("line_items[0][price_data][product_data][description]", description);
-  form.set("line_items[0][price_data][unit_amount]", String(amount));
-  form.set("line_items[0][quantity]", "1");
-
-  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: form,
-  });
-
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || "Stripe checkout session failed.");
-  }
-
-  return payload;
-}
-
 const server = http.createServer(async (request, response) => {
   try {
     if (!request.url) {
@@ -490,10 +492,7 @@ const server = http.createServer(async (request, response) => {
         email,
         phone,
         password: hashPassword(password),
-<<<<<<< ours
         authProvider: "password",
-=======
->>>>>>> theirs
         role,
         courierMode: role === "courier",
         ualbanyIdUploaded: Boolean(ualbanyIdImage),
@@ -515,29 +514,20 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-<<<<<<< ours
     if (request.method === "POST" && url.pathname === "/api/auth/outlook") {
       const body = await readBody(request);
-      const email = String(body.email || "").trim().toLowerCase();
-      const name = String(body.name || "").trim();
+      const idToken = String(body.idToken || "").trim();
       const phone = String(body.phone || "").trim();
       const role = body.role === "courier" ? "courier" : "requester";
       const ualbanyIdImage = String(body.ualbanyIdImage || "").trim();
 
-      if (!email) {
-        sendJson(response, 400, { error: "Campus email is required." });
+      if (!idToken) {
+        sendJson(response, 400, { error: "Microsoft ID token is required." });
         return;
       }
 
-      if (!isCampusEmail(email)) {
-        sendJson(response, 400, { error: "Only campus Outlook addresses are allowed." });
-        return;
-      }
-
-      if (role === "courier" && !ualbanyIdImage) {
-        sendJson(response, 400, { error: "Courier accounts need a UAlbany ID photo." });
-        return;
-      }
+      const microsoftUser = await verifyMicrosoftIdToken(idToken);
+      const { email, name } = microsoftUser;
 
       const data = await readData();
       let user = data.users.find((entry) => entry.email === email);
@@ -552,13 +542,15 @@ const server = http.createServer(async (request, response) => {
         if (role === "courier") {
           user.role = "courier";
           user.courierMode = true;
-          user.ualbanyIdImage = ualbanyIdImage;
-          user.ualbanyIdUploaded = true;
+          if (ualbanyIdImage) {
+            user.ualbanyIdImage = ualbanyIdImage;
+            user.ualbanyIdUploaded = true;
+          }
         }
         user.authProvider = "outlook";
       } else {
-        if (!name || !phone) {
-          sendJson(response, 400, { error: "Name and phone are required to create an Outlook account." });
+        if (role === "courier" && !ualbanyIdImage) {
+          sendJson(response, 400, { error: "Courier accounts need a UAlbany ID photo." });
           return;
         }
 
@@ -591,8 +583,6 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-=======
->>>>>>> theirs
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       const body = await readBody(request);
       const email = String(body.email || "").trim().toLowerCase();
@@ -600,14 +590,10 @@ const server = http.createServer(async (request, response) => {
       const data = await readData();
       const user = data.users.find((entry) => entry.email === email);
 
-<<<<<<< ours
       if (user?.authProvider === "outlook") {
         sendJson(response, 400, { error: "This account uses Outlook. Use the Outlook button to continue." });
         return;
       }
-
-=======
->>>>>>> theirs
       if (!user || !verifyPassword(password, user.password)) {
         sendJson(response, 401, { error: "Invalid email or password." });
         return;
@@ -667,6 +653,7 @@ const server = http.createServer(async (request, response) => {
       if (!auth) return;
 
       const body = await readBody(request);
+      const startCheckout = body.startCheckout === true;
       const requestRecord = {
         id: `request-${crypto.randomUUID()}`,
         userId: auth.user.id,
@@ -684,6 +671,9 @@ const server = http.createServer(async (request, response) => {
         estimatedRetailTotal: Number.isFinite(Number(body.estimatedRetailTotal)) ? Number(body.estimatedRetailTotal) : null,
         estimatedDiscountCost: null,
         runnerEarnings: null,
+        paymentStatus: "unpaid",
+        paidAt: "",
+        stripeCheckoutSessionId: "",
         status: "open",
         acceptedBy: null,
         createdAt: new Date().toISOString(),
@@ -728,6 +718,36 @@ const server = http.createServer(async (request, response) => {
           createdAt: new Date().toISOString(),
         },
       ];
+
+      if (startCheckout) {
+        const amountNumber = Math.round(Number.parseFloat(requestRecord.payment) * 100);
+
+        if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+          sendJson(response, 400, { error: "Request payment amount is invalid." });
+          return;
+        }
+
+        const session = await createStripeCheckoutSession({
+          amount: amountNumber,
+          requestId: requestRecord.id,
+          requesterEmail: auth.user.email,
+          description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
+        });
+
+        requestRecord.paymentStatus = "pending";
+        requestRecord.stripeCheckoutSessionId = String(session.id || "");
+        auth.data.messages[requestRecord.id].push({
+          id: `message-${crypto.randomUUID()}`,
+          senderId: auth.user.id,
+          senderName: auth.user.name,
+          text: "Stripe Checkout started for this request.",
+          createdAt: new Date().toISOString(),
+        });
+        await writeData(auth.data);
+        sendJson(response, 201, { request: decorateRequest(requestRecord, auth.data), checkoutUrl: session.url });
+        return;
+      }
+
       await writeData(auth.data);
       sendJson(response, 201, { request: decorateRequest(requestRecord, auth.data) });
       return;
@@ -935,10 +955,20 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.userId !== auth.user.id) {
+        sendJson(response, 403, { error: "Only the requester can pay the delivery fee for this request." });
+        return;
+      }
+
       const amountNumber = Math.round(Number.parseFloat(requestRecord.payment) * 100);
 
       if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
         sendJson(response, 400, { error: "Request payment amount is invalid." });
+        return;
+      }
+
+      if (requestRecord.paymentStatus === "paid") {
+        sendJson(response, 409, { error: "This request has already been paid." });
         return;
       }
 
@@ -949,7 +979,55 @@ const server = http.createServer(async (request, response) => {
         description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
       });
 
+      requestRecord.paymentStatus = "pending";
+      requestRecord.stripeCheckoutSessionId = String(session.id || "");
+      await writeData(auth.data);
       sendJson(response, 200, { url: session.url });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/payments/confirm") {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+
+      const body = await readBody(request);
+      const requestId = String(body.requestId || "");
+      const paymentState = String(body.paymentState || "");
+      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
+
+      if (!requestRecord) {
+        sendJson(response, 404, { error: "Request not found." });
+        return;
+      }
+
+      if (requestRecord.userId !== auth.user.id) {
+        sendJson(response, 403, { error: "Only the requester can update payment status for this request." });
+        return;
+      }
+
+      if (paymentState === "success") {
+        requestRecord.paymentStatus = "paid";
+        requestRecord.paidAt = new Date().toISOString();
+      } else if (paymentState === "cancelled") {
+        requestRecord.paymentStatus = "unpaid";
+      } else {
+        sendJson(response, 400, { error: "Unsupported payment state." });
+        return;
+      }
+
+      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
+      auth.data.messages[requestId].push({
+        id: `message-${crypto.randomUUID()}`,
+        senderId: auth.user.id,
+        senderName: auth.user.name,
+        text:
+          paymentState === "success"
+            ? "Payment was completed in Stripe Checkout."
+            : "Stripe Checkout was cancelled before payment was completed.",
+        createdAt: new Date().toISOString(),
+      });
+      await writeData(auth.data);
+      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;
     }
 
