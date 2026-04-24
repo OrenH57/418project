@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node server/index.mjs",
-    "test": "node tests/run-tests.mjs",
+    "dev:server": "node backend/index.mjs",
+    "test": "node backend/tests/run-tests.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

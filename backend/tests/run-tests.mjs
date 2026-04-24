@@ -7,9 +7,9 @@ const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "campus-connect-tests-"
 process.env.CAMPUSCONNECT_DATA_DIR = tempRoot;
 process.env.CAMPUSCONNECT_DATA_FILE = path.join(tempRoot, "app-data.json");
 
-const { hashPassword, verifyPassword, sanitizeUser } = await import("../server/lib/auth.mjs");
-const { dataFile } = await import("../server/lib/config.mjs");
-const { readData } = await import("../server/lib/store.mjs");
+const { hashPassword, verifyPassword, sanitizeUser } = await import("../lib/auth.mjs");
+const { dataFile } = await import("../lib/config.mjs");
+const { readData } = await import("../lib/store.mjs");
 
 const results = [];
 

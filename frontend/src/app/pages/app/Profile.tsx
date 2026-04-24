@@ -23,7 +23,7 @@ type ProfileData = {
   name: string;
   email: string;
   phone: string;
-  role: "requester" | "courier";
+  role: "requester" | "courier" | "admin";
   courierMode: boolean;
   ualbanyIdUploaded: boolean;
   ualbanyIdImage?: string;

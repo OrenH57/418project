@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || "/",
+  publicDir: "frontend/public",
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {

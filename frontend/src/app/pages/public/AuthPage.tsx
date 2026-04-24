@@ -20,16 +20,22 @@ import { isMicrosoftAuthConfigured, microsoftLoginRequest } from "../../lib/micr
 
 const sideCopy = {
   requester: {
-    badge: "Requester side",
-    title: "Request delivery or a ride",
-    description: "Sign in to request food delivery after ordering in GET, or book a campus ride.",
+    badge: "Food delivery",
+    title: "Get food delivered on campus",
+    description: "Sign in to request food delivery after ordering in GET, whether you are in your dorm, studying late, or working on campus.",
   },
   courier: {
     badge: "Deliverer side",
     title: "Become a deliverer",
-    description: "Sign in to take nearby delivery jobs and earn money helping students in dorms, libraries, and late-night campus spots.",
+    description: "Sign in to take nearby food delivery jobs and earn money helping students in dorms, libraries, and late-night campus spots.",
   },
 };
+
+const demoAccounts = [
+  { role: "Requester", email: "ariana.green@albany.edu", password: "demo1234" },
+  { role: "Courier", email: "marcus.hall@albany.edu", password: "demo1234" },
+  { role: "Admin", email: "jordan.reyes@albany.edu", password: "demo1234" },
+];
 
 export function AuthPage() {
   const navigate = useNavigate();
@@ -166,10 +172,10 @@ export function AuthPage() {
           <CardContent className="p-5 sm:p-8 lg:p-9">
             <Badge className="mb-3 bg-white/15 text-white sm:mb-4">UAlbany Prototype</Badge>
             <h1 className="max-w-xl text-2xl font-bold leading-tight sm:text-4xl">
-              Student delivery for Campus Center food orders and quick campus rides.
+              Student delivery for Campus Center food orders across campus.
             </h1>
             <p className="mt-3 max-w-xl text-sm text-white/85 sm:mt-4 sm:text-base">
-              CampusConnect is where students request delivery and rides. Food orders still happen in GET first, then another student can bring them across campus.
+              CampusConnect is built for students who are studying, working late, or relaxing in their dorm and want food brought to them. Food orders still happen in GET first, then another student can deliver them across campus.
             </p>
 
             <div className="mt-5 hidden gap-3 sm:grid md:grid-cols-3 sm:gap-4 sm:mt-8">
@@ -181,7 +187,7 @@ export function AuthPage() {
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Bike className="mb-3 h-5 w-5" />
                 <p className="font-semibold">Courier mode</p>
-                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to the driver side to accept nearby runs.</p>
+                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to accept nearby food runs and keep delivery moving.</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Shield className="mb-3 h-5 w-5" />
@@ -343,13 +349,23 @@ export function AuthPage() {
               </p>
             ) : null}
 
-            {mode === "login" ? (
-              <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-                <p className="font-medium text-[var(--ink)]">Demo accounts</p>
-                <p className="mt-1">`ariana.green@albany.edu` / `demo1234`</p>
-                <p>`marcus.hall@albany.edu` / `demo1234`</p>
+            <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
+              <p className="font-medium text-[var(--ink)]">Demo accounts</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                These are available in the seeded prototype database.
+              </p>
+              <div className="mt-3 space-y-2">
+                {demoAccounts.map((account) => (
+                  <div key={account.email} className="rounded-xl bg-white px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{account.role}</Badge>
+                      <span className="font-medium text-[var(--ink)]">{account.email}</span>
+                    </div>
+                    <p className="mt-1 text-[var(--muted)]">Password: {account.password}</p>
+                  </div>
+                ))}
               </div>
-            ) : null}
+            </div>
             </form>
           </CardContent>
         </Card>

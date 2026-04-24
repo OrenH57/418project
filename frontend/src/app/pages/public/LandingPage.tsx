@@ -10,7 +10,6 @@ import {
   Shield,
   Sparkles,
   UtensilsCrossed,
-  Car,
   DollarSign,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -21,32 +20,32 @@ import { openGetMobile } from "../../lib/getMobile";
 
 const featureCards = [
   {
-    title: "Request Food Delivery",
-    body: "Place your meal in GET first, then request student delivery here.",
+    title: "Get Food Delivered",
+    body: "Order in GET first, then have another student bring it to your dorm, library, or study spot.",
     icon: UtensilsCrossed,
   },
   {
-    title: "Order a Ride",
-    body: "Get a faster trip across campus when time, weather, or energy make the walk a bad option.",
-    icon: Car,
+    title: "Built For Campus Nights",
+    body: "Best for students who are studying late, working, or staying in and do not want to leave their spot.",
+    icon: Clock3,
   },
   {
-    title: "Make Extra Cash",
-    body: "Pick up nearby requests for students studying, working on campus, or avoiding cold and dark late-night walks.",
+    title: "Earn On Nearby Runs",
+    body: "Pick up delivery requests that already fit your route and help other students get food fast.",
     icon: DollarSign,
   },
 ];
 
 const stats = [
-  { value: "Under 1 min", label: "to post a request" },
+  { value: "Under 1 min", label: "to request delivery" },
   { value: "UAlbany-only", label: "verified campus access" },
   { value: "GET first", label: "for food ordering" },
 ];
 
 const steps = [
-  "Order food in GET first or choose a ride.",
-  "Post the request in CampusConnect and wait for a verified student match.",
-  "Track the request and meet up fast.",
+  "Order your food in GET first.",
+  "Request delivery to your dorm, library, or campus spot.",
+  "Track your order and meet your courier fast.",
 ];
 
 export function LandingPage() {
@@ -67,21 +66,21 @@ export function LandingPage() {
             <div>
               <Badge className="mb-3 gap-2 rounded-full px-4 py-2 text-xs" variant="secondary">
                 <Sparkles className="h-3.5 w-3.5" />
-                UAlbany-only delivery and rides
+                UAlbany-only food delivery
               </Badge>
 
               <h1 className="max-w-3xl text-4xl font-bold leading-[0.98] tracking-[-0.04em] text-[var(--ink)] sm:text-5xl lg:text-6xl">
-                Get food or a ride without leaving your dorm, library table, or late-night study spot.
+                Your campus favorites, delivered wherever you are.
               </h1>
 
               <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--muted)] sm:text-lg">
-                CampusConnect handles delivery and ride requests for UAlbany students. Food orders are placed in GET first, then tracked here.
+                Whether you are studying late, working, or relaxing in your dorm, CampusConnect helps you get food delivered without leaving your spot.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-2.5 text-sm text-[var(--muted)]">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur">
                   <CheckCircle2 className="h-4 w-4 text-[var(--brand-accent)]" />
-                  Built for study sessions, campus workdays, bad weather, and late nights
+                  Made for study sessions, work shifts, dorm nights, and late cravings
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur">
                   <Shield className="h-4 w-4 text-[var(--brand-accent)]" />
@@ -89,7 +88,7 @@ export function LandingPage() {
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur">
                   <UtensilsCrossed className="h-4 w-4 text-[var(--brand-accent)]" />
-                  Food ordering stays in GET
+                  Order in GET, track delivery here
                 </span>
               </div>
 
@@ -97,9 +96,9 @@ export function LandingPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                   <div className="max-w-xl">
                     <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Start Here</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Request help in under a minute</h2>
+                    <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Get food delivered in a few quick taps</h2>
                     <p className="mt-2 text-sm leading-6 text-[var(--muted)] sm:text-base">
-                      Skip the extra trip. Request delivery after ordering in GET, or book a ride and keep moving through your day.
+                      Stay where you are. Order in GET first, then request delivery to your dorm, library table, or campus hangout.
                     </p>
                   </div>
 
@@ -109,7 +108,7 @@ export function LandingPage() {
                       onClick={() => navigate("/auth?side=requester")}
                       size="lg"
                     >
-                      Request Food or Ride
+                      Request Food Delivery
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                     <Button className="w-full rounded-2xl" onClick={() => openGetMobile()} size="lg" variant="outline">
@@ -145,9 +144,9 @@ export function LandingPage() {
 
                 <div className="rounded-[1.5rem] border border-[var(--brand-accent)] bg-[linear-gradient(180deg,rgba(247,236,212,0.7),rgba(255,255,255,0.92))] p-4 sm:p-5">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Earn On Your Schedule</p>
-                  <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">Take nearby requests when they fit your route</h2>
+                  <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">Take nearby food runs when they fit your route</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Earn by taking delivery and ride requests for students in dorms, libraries, and other campus spots that already line up with where you are going.
+                    Earn by delivering meals to students who are studying, working late, or staying in their dorms.
                   </p>
                   <div className="mt-4">
                     <Button className="w-full rounded-2xl" onClick={() => navigate("/auth?side=courier")} size="lg" variant="secondary">
@@ -165,7 +164,7 @@ export function LandingPage() {
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Why students use it</p>
-                      <p className="mt-2 text-xl font-semibold text-[var(--ink)]">Faster than making another campus trip yourself</p>
+                      <p className="mt-2 text-xl font-semibold text-[var(--ink)]">The easier way to eat without leaving your space</p>
                     </div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--muted)] shadow-sm">
                       <Clock3 className="h-4 w-4 text-[var(--brand-accent)]" />
@@ -176,12 +175,12 @@ export function LandingPage() {
                     <div className="rounded-[1.25rem] border border-[var(--border)] bg-white/90 p-4">
                       <Shield className="h-5 w-5 text-[var(--brand-accent)]" />
                       <p className="mt-3 font-semibold text-[var(--ink)]">Trusted campus network</p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">Only verified UAlbany students can request, accept, and coordinate handoff.</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">Only verified UAlbany students can request, accept, and coordinate delivery.</p>
                     </div>
                     <div className="rounded-[1.25rem] border border-[var(--border)] bg-white/90 p-4">
                       <CheckCircle2 className="h-5 w-5 text-[var(--brand-accent)]" />
-                      <p className="mt-3 font-semibold text-[var(--ink)]">One place to track everything</p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">Food runs, ride help, and courier communication stay in one streamlined flow.</p>
+                      <p className="mt-3 font-semibold text-[var(--ink)]">Better use of your campus meal money</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">Use your discount dollars on campus instead of paying full delivery app prices off campus.</p>
                     </div>
                   </div>
                 </CardContent>
@@ -211,7 +210,7 @@ export function LandingPage() {
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-white/95 p-3 shadow-[0_-12px_40px_rgba(45,34,39,0.12)] backdrop-blur sm:hidden">
         <div className="mx-auto flex max-w-md items-center gap-2">
           <Button className="min-h-12 flex-1 rounded-2xl" onClick={() => navigate("/auth?side=requester")} size="lg">
-            Request
+            Order
           </Button>
           <Button className="min-h-12 rounded-2xl px-4" onClick={() => openGetMobile()} size="lg" variant="outline">
             GET

@@ -144,6 +144,27 @@ const seedData = {
       completedJobs: 34,
       earnings: 186,
     },
+    {
+      id: "user-admin-1",
+      name: "Jordan Reyes",
+      email: "jordan.reyes@albany.edu",
+      phone: "518-555-0112",
+      password: hashPassword("demo1234"),
+      authProvider: "password",
+      role: "admin",
+      courierMode: false,
+      ualbanyIdUploaded: true,
+      ualbanyIdImage: "demo-admin-id-on-file",
+      foodSafetyVerified: true,
+      notificationsEnabled: true,
+      courierOnline: false,
+      suspended: false,
+      suspendedReason: "",
+      bio: "CampusConnect admin keeping delivery requests safe and campus-only.",
+      rating: 5,
+      completedJobs: 0,
+      earnings: 0,
+    },
   ],
   sessions: [],
   requests: [
@@ -211,6 +232,8 @@ async function ensureDemoUsers() {
           foodSafetyVerified: user.foodSafetyVerified,
           notificationsEnabled: user.notificationsEnabled,
           courierOnline: user.courierOnline,
+          suspended: user.suspended,
+          suspendedReason: user.suspendedReason,
           bio: user.bio,
           rating: user.rating,
           completedJobs: user.completedJobs,
@@ -277,6 +300,13 @@ async function readData() {
   };
 
   let changed = false;
+
+  for (const demoUser of demoUsers) {
+    if (!data.users.some((entry) => entry.email === demoUser.email)) {
+      data.users.push({ ...demoUser });
+      changed = true;
+    }
+  }
   const normalizedRestaurants = JSON.stringify(ualbanyRestaurants);
 
   for (const user of data.users) {
@@ -338,6 +368,14 @@ async function readData() {
     }
     if (typeof user.courierOnline !== "boolean") {
       user.courierOnline = false;
+      changed = true;
+    }
+    if (typeof user.suspended !== "boolean") {
+      user.suspended = false;
+      changed = true;
+    }
+    if (typeof user.suspendedReason !== "string") {
+      user.suspendedReason = "";
       changed = true;
     }
   }
@@ -404,6 +442,30 @@ async function readData() {
     }
     if (typeof request.stripeCheckoutSessionId !== "string") {
       request.stripeCheckoutSessionId = "";
+      changed = true;
+    }
+    if (typeof request.flagged !== "boolean") {
+      request.flagged = false;
+      changed = true;
+    }
+    if (typeof request.flaggedReason !== "string") {
+      request.flaggedReason = "";
+      changed = true;
+    }
+    if (
+      request.moderationStatus !== "clear" &&
+      request.moderationStatus !== "flagged" &&
+      request.moderationStatus !== "removed"
+    ) {
+      request.moderationStatus = request.flagged ? "flagged" : "clear";
+      changed = true;
+    }
+    if (typeof request.removedAt !== "string") {
+      request.removedAt = "";
+      changed = true;
+    }
+    if (typeof request.removedBy !== "string") {
+      request.removedBy = "";
       changed = true;
     }
   }
@@ -486,10 +548,79 @@ function sanitizeUser(user) {
     foodSafetyVerified: Boolean(user.foodSafetyVerified),
     notificationsEnabled: Boolean(user.notificationsEnabled),
     courierOnline: Boolean(user.courierOnline),
+    suspended: Boolean(user.suspended),
+    suspendedReason: typeof user.suspendedReason === "string" ? user.suspendedReason : "",
     bio: user.bio,
     rating: user.rating,
     completedJobs: user.completedJobs,
     earnings: user.earnings,
+  };
+}
+
+const blockedRequestKeywords = [
+  "weapon",
+  "drugs",
+  "alcohol run",
+  "fake id",
+  "stolen",
+];
+
+function requireAdmin(user, response) {
+  if (user.role !== "admin") {
+    sendJson(response, 403, { error: "Only admin accounts can access that page." });
+    return false;
+  }
+  return true;
+}
+
+function matchesBlockedKeyword(requestRecord) {
+  const haystack = [
+    requestRecord.pickup,
+    requestRecord.destination,
+    requestRecord.notes,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return blockedRequestKeywords.find((keyword) => haystack.includes(keyword));
+}
+
+function applyAutomaticModeration(requestRecord) {
+  const blockedKeyword = matchesBlockedKeyword(requestRecord);
+  if (!blockedKeyword) {
+    return;
+  }
+
+  requestRecord.flagged = true;
+  requestRecord.flaggedReason = `Matched blocked keyword: ${blockedKeyword}`;
+  requestRecord.moderationStatus = "flagged";
+}
+
+function buildAdminOverview(data) {
+  const visibleRequests = data.requests.filter((entry) => entry.moderationStatus !== "removed");
+  const grossVolume = visibleRequests.reduce(
+    (total, entry) => total + (Number.isFinite(Number.parseFloat(entry.payment || "0")) ? Number.parseFloat(entry.payment) : 0),
+    0,
+  );
+
+  return {
+    flaggedRequests: data.requests
+      .filter((entry) => entry.moderationStatus === "flagged")
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    moderatedRequests: data.requests
+      .filter((entry) => entry.moderationStatus === "removed")
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    users: data.users
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => sanitizeUser(entry)),
+    blockedKeywords: blockedRequestKeywords,
+    metrics: {
+      activeUsers: data.users.filter((entry) => !entry.suspended).length,
+      openRequests: visibleRequests.filter((entry) => entry.status === "open").length,
+      flaggedCases: data.requests.filter((entry) => entry.moderationStatus === "flagged").length,
+      suspendedUsers: data.users.filter((entry) => entry.suspended).length,
+      grossVolume: `$${grossVolume.toFixed(0)}`,
+    },
   };
 }
 
@@ -523,6 +654,15 @@ async function requireUser(request, response) {
   const user = data.users.find((entry) => entry.id === session.userId);
   if (!user) {
     sendJson(response, 401, { error: "User not found." });
+    return null;
+  }
+
+  if (user.suspended) {
+    sendJson(response, 403, {
+      error: user.suspendedReason
+        ? `This account is suspended: ${user.suspendedReason}`
+        : "This account is suspended.",
+    });
     return null;
   }
 
@@ -867,6 +1007,7 @@ const server = http.createServer(async (request, response) => {
 
       sendJson(response, 200, {
         requests: filtered
+          .filter((entry) => entry.moderationStatus !== "removed")
           .slice()
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
           .map((entry) => decorateRequest(entry, auth.data)),
@@ -914,6 +1055,11 @@ const server = http.createServer(async (request, response) => {
         stripeCheckoutSessionId: "",
         status: "open",
         acceptedBy: null,
+        flagged: false,
+        flaggedReason: "",
+        moderationStatus: "clear",
+        removedAt: "",
+        removedBy: "",
         createdAt: new Date().toISOString(),
       };
 
@@ -942,6 +1088,8 @@ const server = http.createServer(async (request, response) => {
           return;
         }
       }
+
+      applyAutomaticModeration(requestRecord);
 
       const duplicateRequest = findRecentDuplicateRequest(auth.data.requests, requestRecord);
       if (duplicateRequest) {
@@ -1015,6 +1163,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.moderationStatus === "removed") {
+        sendJson(response, 410, { error: "This request was removed by an admin." });
+        return;
+      }
+
       if (requestRecord.serviceType === "food" && !auth.user.foodSafetyVerified) {
         sendJson(response, 403, { error: "Verify your campus email before accepting food deliveries." });
         return;
@@ -1062,6 +1215,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.moderationStatus === "removed") {
+        sendJson(response, 410, { error: "This request was removed by an admin." });
+        return;
+      }
+
       if (requestRecord.userId !== auth.user.id) {
         sendJson(response, 403, { error: "Only the requester can mark this order as ready." });
         return;
@@ -1099,6 +1257,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.moderationStatus === "removed") {
+        sendJson(response, 410, { error: "This request was removed by an admin." });
+        return;
+      }
+
       if (!canAccessRequest(auth.user.id, requestRecord)) {
         sendJson(response, 403, { error: "You do not have access to this conversation." });
         return;
@@ -1129,6 +1292,11 @@ const server = http.createServer(async (request, response) => {
 
       if (!requestRecord) {
         sendJson(response, 404, { error: "Conversation not found." });
+        return;
+      }
+
+      if (requestRecord.moderationStatus === "removed") {
+        sendJson(response, 410, { error: "This request was removed by an admin." });
         return;
       }
 
@@ -1324,6 +1492,98 @@ const server = http.createServer(async (request, response) => {
       }
       await writeData(auth.data);
       sendJson(response, 200, { user: sanitizeUser(auth.user) });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/admin/overview") {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+      if (!requireAdmin(auth.user, response)) return;
+
+      sendJson(response, 200, buildAdminOverview(auth.data));
+      return;
+    }
+
+    if (request.method === "PATCH" && url.pathname.startsWith("/api/admin/requests/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+      if (!requireAdmin(auth.user, response)) return;
+
+      const requestId = url.pathname.split("/")[4];
+      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
+      const body = await readBody(request);
+      const action = String(body.action || "");
+      const reason = String(body.reason || "").trim();
+
+      if (!requestRecord) {
+        sendJson(response, 404, { error: "Request not found." });
+        return;
+      }
+
+      if (action === "flag") {
+        requestRecord.flagged = true;
+        requestRecord.flaggedReason = reason || requestRecord.flaggedReason || "Flagged by admin review.";
+        requestRecord.moderationStatus = "flagged";
+      } else if (action === "remove") {
+        requestRecord.flagged = true;
+        requestRecord.flaggedReason = reason || requestRecord.flaggedReason || "Removed by admin.";
+        requestRecord.moderationStatus = "removed";
+        requestRecord.removedAt = new Date().toISOString();
+        requestRecord.removedBy = auth.user.id;
+      } else if (action === "clear") {
+        requestRecord.flagged = false;
+        requestRecord.flaggedReason = "";
+        requestRecord.moderationStatus = "clear";
+        requestRecord.removedAt = "";
+        requestRecord.removedBy = "";
+      } else {
+        sendJson(response, 400, { error: "Unsupported moderation action." });
+        return;
+      }
+
+      await writeData(auth.data);
+      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+      return;
+    }
+
+    if (request.method === "PATCH" && url.pathname.startsWith("/api/admin/users/") && url.pathname.endsWith("/suspension")) {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+      if (!requireAdmin(auth.user, response)) return;
+
+      const userId = url.pathname.split("/")[4];
+      const targetUser = auth.data.users.find((entry) => entry.id === userId);
+      const body = await readBody(request);
+      const suspended = body.suspended === true;
+      const reason = String(body.reason || "").trim();
+
+      if (!targetUser) {
+        sendJson(response, 404, { error: "User not found." });
+        return;
+      }
+
+      if (targetUser.role === "admin" && targetUser.id === auth.user.id) {
+        sendJson(response, 400, { error: "Admins cannot suspend their own account." });
+        return;
+      }
+
+      targetUser.suspended = suspended;
+      targetUser.suspendedReason = suspended ? reason || "Suspended by admin review." : "";
+
+      if (suspended) {
+        for (const requestRecord of auth.data.requests) {
+          if (requestRecord.userId === targetUser.id || requestRecord.acceptedBy === targetUser.id) {
+            requestRecord.flagged = true;
+            requestRecord.flaggedReason = `Connected to suspended account: ${targetUser.name}`;
+            if (requestRecord.moderationStatus === "clear") {
+              requestRecord.moderationStatus = "flagged";
+            }
+          }
+        }
+      }
+
+      await writeData(auth.data);
+      sendJson(response, 200, { user: sanitizeUser(targetUser) });
       return;
     }
 

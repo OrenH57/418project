@@ -11,14 +11,11 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
-  Flame,
   MapPin,
   Repeat2,
-  ShieldCheck,
   Sparkles,
   Store,
   TimerReset,
-  Users,
   UtensilsCrossed,
 } from "lucide-react";
 import { Card, CardContent } from "../../components/ui/card";
@@ -45,16 +42,16 @@ type QuickAction = {
 const quickActions: QuickAction[] = [
   {
     label: "Order Food",
-    description: "Order in GET first, then request student delivery here.",
+    description: "Order in GET first, then get it delivered to your dorm, library, or study spot.",
     detail: "Most popular",
     path: "/request?type=food&pickup=Starbucks",
     icon: UtensilsCrossed,
     accentClassName: "bg-[var(--brand-maroon)] text-white",
   },
   {
-    label: "Order a Ride",
-    description: "Request a quick ride across campus.",
-    detail: "Fastest option",
+    label: "Need a Ride?",
+    description: "Rides are still available when you need a quick trip across campus.",
+    detail: "Secondary",
     path: "/request?type=ride",
     icon: Car,
     accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
@@ -80,10 +77,10 @@ const howItWorks = [
 ];
 
 const heroCopy = {
-  badge: "UAlbany Delivery And Rides",
+  badge: "UAlbany Food Delivery",
   primaryLabel: "Request Food Delivery",
   primaryPath: "/request?type=food&pickup=Starbucks",
-  secondaryLabel: "Get a Ride",
+  secondaryLabel: "Ride Option",
   secondaryPath: "/request?type=ride",
 };
 
@@ -305,11 +302,10 @@ export function Home() {
                 {heroCopy.badge}
               </Badge>
               <h1 className="max-w-2xl text-2xl font-bold leading-tight text-[var(--ink)] sm:text-5xl">
-                Open this first when you only have a short break.
+                Food delivery for late nights, study sessions, and dorm days.
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)] sm:text-base">
-                Hi, {user?.name.split(" ")[0]}. Check whether the network is active, reuse a past request in one tap, and
-                only post when someone can actually pick it up.
+                Hi, {user?.name.split(" ")[0]}. Whether you are studying, working, or staying in your dorm, you can check live courier activity, reorder faster, and get food delivered without leaving your spot.
               </p>
 
               <div className="mt-6 hidden flex-col gap-3 sm:flex sm:flex-row sm:flex-wrap">
@@ -328,14 +324,6 @@ export function Home() {
                 <div className="rounded-2xl bg-[var(--surface-tint)] px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Couriers online</p>
                   <p className="mt-1 font-semibold text-[var(--ink)]">{campusSnapshot?.onlineCouriers ?? 0} active now</p>
-                </div>
-                <div className="rounded-2xl bg-[var(--surface-tint)] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Campus pulse</p>
-                  <p className="mt-1 font-semibold text-[var(--ink)]">{campusSnapshot?.lunchRushLabel || "Checking live demand"}</p>
-                </div>
-                <div className="hidden rounded-2xl bg-[var(--surface-tint)] px-4 py-3 sm:block">
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Hot zone</p>
-                  <p className="mt-1 font-semibold text-[var(--ink)]">{campusSnapshot?.busiestZone || "Campus Center"}</p>
                 </div>
               </div>
             </div>
@@ -364,62 +352,7 @@ export function Home() {
           </div>
         </section>
 
-        <section className="mb-8 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,244,235,0.92))]">
-            <CardContent className="p-5 sm:p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Why Open This Today</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Live campus activity</h2>
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Open this before you order so you know whether someone can actually take your request right now.
-                  </p>
-                </div>
-                <Badge variant="secondary">Updated live</Badge>
-              </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.25rem] border border-[var(--border)] bg-white p-4">
-                  <Users className="h-5 w-5 text-[var(--brand-accent)]" />
-                  <p className="mt-3 text-sm text-[var(--muted)]">Couriers online</p>
-                  <p className="text-2xl font-semibold text-[var(--ink)]">{campusSnapshot?.onlineCouriers ?? 0}</p>
-                </div>
-                <div className="rounded-[1.25rem] border border-[var(--border)] bg-white p-4">
-                  <Flame className="h-5 w-5 text-[var(--brand-accent)]" />
-                  <p className="mt-3 text-sm text-[var(--muted)]">Open campus jobs</p>
-                  <p className="text-2xl font-semibold text-[var(--ink)]">{campusSnapshot?.openRequests ?? 0}</p>
-                </div>
-                <div className="rounded-[1.25rem] border border-[var(--border)] bg-white p-4">
-                  <DollarSign className="h-5 w-5 text-[var(--brand-accent)]" />
-                  <p className="mt-3 text-sm text-[var(--muted)]">Typical payout</p>
-                  <p className="text-2xl font-semibold text-[var(--ink)]">${campusSnapshot?.avgPayout ?? 0}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.25rem] bg-[var(--surface-tint)] p-4">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-[var(--brand-maroon)]" />
-                    <p className="font-medium text-[var(--ink)]">Busiest area</p>
-                  </div>
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Most current requests are flowing through{" "}
-                    <span className="font-semibold text-[var(--ink)]">{campusSnapshot?.busiestZone || "Campus Center"}</span>.
-                  </p>
-                </div>
-                <div className="rounded-[1.25rem] bg-[var(--surface-tint)] p-4">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-[var(--brand-maroon)]" />
-                    <p className="font-medium text-[var(--ink)]">Trust signal</p>
-                  </div>
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    You can see whether the network is alive before spending time on a request form.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+        <section className="mb-8">
           <Card className="border-[var(--border)] bg-white">
             <CardContent className="p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
@@ -427,7 +360,7 @@ export function Home() {
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Faster Than Last Time</p>
                   <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Repeat a recent request</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Skip retyping the same pickup, dorm, and fee when you already know what you want.
+                    Skip retyping the same pickup, dorm, and fee when you already know what you want for tonight.
                   </p>
                 </div>
                 <Repeat2 className="h-5 w-5 text-[var(--brand-accent)]" />
@@ -467,7 +400,7 @@ export function Home() {
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <h2 className="font-semibold text-[var(--ink)]">Choose what you need</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Start from a big category instead of a search box.</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Start with food delivery, with rides kept as a secondary option.</p>
             </div>
             <Button className="hidden sm:inline-flex" onClick={() => navigate("/request")} variant="ghost">
               Open request form

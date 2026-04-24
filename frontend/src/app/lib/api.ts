@@ -9,13 +9,15 @@ export type User = {
   name: string;
   email: string;
   phone: string;
-  role: "requester" | "courier";
+  role: "requester" | "courier" | "admin";
   courierMode: boolean;
   ualbanyIdUploaded: boolean;
   ualbanyIdImage?: string;
   foodSafetyVerified: boolean;
   notificationsEnabled: boolean;
   courierOnline: boolean;
+  suspended?: boolean;
+  suspendedReason?: string;
   bio: string;
   rating: number;
   completedJobs: number;
@@ -46,6 +48,25 @@ export type RequestRecord = {
   runnerEarnings?: number;
   paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
   paidAt?: string;
+  flagged?: boolean;
+  flaggedReason?: string;
+  moderationStatus?: "clear" | "flagged" | "removed";
+  removedAt?: string;
+  removedBy?: string;
+};
+
+export type AdminOverview = {
+  flaggedRequests: RequestRecord[];
+  moderatedRequests: RequestRecord[];
+  users: User[];
+  blockedKeywords: string[];
+  metrics: {
+    activeUsers: number;
+    openRequests: number;
+    flaggedCases: number;
+    suspendedUsers: number;
+    grossVolume: string;
+  };
 };
 
 export type MessageRecord = {
@@ -273,6 +294,29 @@ export const api = {
       `/ratings/${requestId}`,
       {
         method: "POST",
+        body: JSON.stringify(input),
+      },
+      token,
+    );
+  },
+  getAdminOverview(token: string) {
+    return request<AdminOverview>("/admin/overview", {}, token);
+  },
+  moderateRequest(token: string, requestId: string, input: { action: "flag" | "remove" | "clear"; reason?: string }) {
+    return request<{ request: RequestRecord }>(
+      `/admin/requests/${requestId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+      token,
+    );
+  },
+  suspendUser(token: string, userId: string, input: { suspended: boolean; reason?: string }) {
+    return request<{ user: User }>(
+      `/admin/users/${userId}/suspension`,
+      {
+        method: "PATCH",
         body: JSON.stringify(input),
       },
       token,

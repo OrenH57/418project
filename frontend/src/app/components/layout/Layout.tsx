@@ -40,7 +40,7 @@ export function Layout() {
             </div>
             <div>
               <p className="font-semibold text-[var(--ink)]">CampusConnect</p>
-              <p className="text-xs text-[var(--muted)]">Food delivery and rides</p>
+              <p className="text-xs text-[var(--muted)]">Campus food delivery</p>
             </div>
           </button>
 
@@ -65,7 +65,7 @@ export function Layout() {
             </Button>
             {user ? (
               <Badge className="col-span-3 justify-center sm:col-auto sm:inline-flex" variant="secondary">
-                {preferredView === "courier" ? "Courier" : "Customer"}
+                {user.role === "admin" ? "Admin" : preferredView === "courier" ? "Courier" : "Customer"}
               </Badge>
             ) : null}
             <Button

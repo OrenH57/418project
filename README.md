@@ -1,33 +1,47 @@
 # CampusConnect
 
-CampusConnect is a UAlbany-focused prototype for student delivery and campus ride help. The idea is simple: students can request food delivery after placing an order in GET, ask for a ride across campus, or pick up nearby requests to earn some extra money.
+CampusConnect is a UAlbany-focused prototype for student food delivery and campus ride help. Students can request Campus Center food delivery after ordering in GET, request rides, accept courier jobs, and coordinate through in-app messaging.
 
-## What’s in the app
+## Project Structure
 
-- Food delivery requests for Campus Center orders
-- Ride and general campus help requests
+This project is now organized with clearer frontend and backend boundaries:
+
+```text
+418 final/
+├── frontend/
+│   ├── public/              # Static frontend assets
+│   └── src/
+│       ├── app/
+│       │   ├── components/  # Reusable UI, layout, marketing, and map components
+│       │   ├── context/     # React providers and auth state
+│       │   ├── lib/         # Frontend helpers, API client, config helpers
+│       │   ├── pages/       # Public and signed-in app pages
+│       │   ├── App.tsx      # Root app shell
+│       │   └── routes.tsx   # Frontend route map
+│       ├── main.tsx         # Frontend entrypoint
+│       └── styles.css       # Global styles
+├── backend/
+│   ├── data/                # Local prototype data storage
+│   ├── lib/                 # Backend helpers and shared server logic
+│   ├── tests/               # Backend-oriented automated tests
+│   └── index.mjs            # Backend entrypoint
+├── index.html               # Vite HTML entry
+├── package.json             # Shared scripts for local development
+├── vite.config.ts           # Frontend build config
+└── tsconfig.app.json        # Frontend TypeScript config
+```
+
+## What Is In The App
+
+- Campus Center food delivery requests
+- Campus ride requests
 - Courier-side request pickup and messaging
-- Demo auth flows for requester and courier views
+- UAlbany verification flows
+- Admin moderation tools for flagged listings and suspensions
 
-Discount Dollars are still just a placeholder for now.
+Discount Dollars are still a placeholder.
 
-## Project layout
-
-The codebase is split up by feature so it is a little easier to follow:
-
-- `src/app/pages/public` holds the landing page, auth page, and public error screen
-- `src/app/pages/app` holds the signed-in app pages like home, profile, requests, messages, and admin
-- `src/app/components/layout` has the shared shell and navigation pieces
-- `src/app/components/marketing` has public-facing landing page visuals
-- `src/app/components/maps` has map-related display components
-- `src/app/components/ui` has the reusable UI building blocks
-- `src/app/lib` has frontend helpers, shared utilities, and the API client
-- `server` contains the backend entrypoint and data logic
-- `public` contains static frontend assets
-
-Generated or local-only files like `dist`, `.npm-cache`, `*.log`, and `server/data/app-data.json` should stay out of Git.
-
-## Running it locally
+## Running It Locally
 
 Start the frontend:
 
@@ -40,6 +54,20 @@ Start the backend:
 ```bash
 npm run dev:server
 ```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Type-check the frontend:
+
+```bash
+npx tsc -b
+```
+
+## Environment Setup
 
 If you want to test Stripe locally, make a copy of the example env file first:
 
@@ -54,71 +82,20 @@ Then fill in the values you need:
 - `VITE_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_SECRET_KEY`
 
-The backend reads both `.env` and `.env.local`, so either one works.
+The backend reads both `.env` and `.env.local`.
 
-For food delivery requests, payment happens through Stripe as soon as the request is submitted. After checkout finishes, the request opens in chat and shows the payment status there.
+## Demo Accounts
 
-## Notes for the team
+- Requester: `ariana.green@albany.edu` / `demo1234`
+- Courier: `marcus.hall@albany.edu` / `demo1234`
+- Admin: `jordan.reyes@albany.edu` / `demo1234`
+
+## Notes For The Team
 
 - Do not share `.env.local`
-- Do not commit `server/data/app-data.json`
-- The repo includes demo data so everyone can start from roughly the same place
+- Do not commit `backend/data/app-data.json`
+- Generated or local-only files like `dist`, `.npm-cache`, `*.log`, and `*.tsbuildinfo` should stay out of Git
 
-Demo accounts:
+## Hosting Note
 
-- `ariana.green@albany.edu` / `demo1234`
-- `marcus.hall@albany.edu` / `demo1234`
-
-## GitHub Pages
-
-This repo can deploy the frontend with GitHub Actions.
-
-To turn that on:
-
-1. Push the repo to GitHub.
-2. Open `Settings` in the repository.
-3. Open `Pages`.
-4. Set the source to `GitHub Actions`.
-5. Push again or run the `Deploy Frontend To GitHub Pages` workflow manually.
-
-The URL will look like this:
-
-```text
-https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPOSITORY_NAME/
-```
-
-## One important limitation
-
-GitHub Pages only hosts the frontend. The React app can live there, but the backend in `server/index.mjs` cannot. That means login, requests, chat, and local JSON persistence will not work unless the backend is hosted somewhere else too.
-
-If you want the full app online, the easiest setup is:
-
-- GitHub Pages or Vercel for the frontend
-- Render or Railway for the backend
-
-## Suggested hosting setup
-
-### Backend
-
-- Root: `418 final`
-- Build command: `npm install`
-- Start command: `node server/index.mjs`
-
-### Frontend
-
-- Root: `418 final`
-- Build command: `npm run build`
-- Output directory: `dist`
-
-### Frontend env vars
-
-- `VITE_API_BASE_URL=https://YOUR-BACKEND-URL/api`
-- `VITE_AZURE_REDIRECT_URI=https://YOUR-FRONTEND-URL`
-
-### Backend env vars
-
-- `PUBLIC_APP_URL=https://YOUR-FRONTEND-URL`
-- `STRIPE_SECRET_KEY=...`
-- `VITE_STRIPE_PUBLISHABLE_KEY=...`
-- `AZURE_CLIENT_ID=...`
-- `AZURE_TENANT_ID=...`
+GitHub Pages can host the frontend, but not the backend. If you want the full app online, use a frontend host like GitHub Pages or Vercel and a backend host like Render or Railway.

@@ -100,6 +100,8 @@ export function RequestService() {
   const [housingBuilding, setHousingBuilding] = useState("");
   const [housingFloor, setHousingFloor] = useState("");
   const [housingDetails, setHousingDetails] = useState("");
+  const [ridePickupArea, setRidePickupArea] = useState("");
+  const [rideDestinationArea, setRideDestinationArea] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
@@ -132,6 +134,7 @@ export function RequestService() {
   const estimatedRetailAmount = Number.parseFloat(estimatedRetailTotal);
   const paymentAmount = Number.parseFloat(payment);
   const isFood = serviceType === "food";
+  const isRide = serviceType === "ride";
   const isHousingDelivery = isFood;
   const hasOrderScreenshot = Boolean(orderScreenshot);
   const [hasOrderedInGet, setHasOrderedInGet] = useState(!isFood);
@@ -176,6 +179,20 @@ export function RequestService() {
 
     setDestination(housingDestination);
   }, [housingDestination, serviceType]);
+
+  useEffect(() => {
+    if (!isRide) {
+      return;
+    }
+
+    const pickupLabel = ridePickupArea ? `Pickup area: ${ridePickupArea}` : "";
+    const destinationLabel = rideDestinationArea ? `Drop-off area: ${rideDestinationArea}` : "";
+    const nextDestination = [pickupLabel, destinationLabel].filter(Boolean).join(" -> ");
+
+    if (nextDestination) {
+      setDestination(nextDestination);
+    }
+  }, [isRide, rideDestinationArea, ridePickupArea]);
 
   async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -444,7 +461,17 @@ export function RequestService() {
                 <SectionCard description="Keep this simple and short." title="2. Main details">
                   <div>
                     <Label htmlFor="pickup">{helperCopy.pickupLabel}</Label>
-                    <Input id="pickup" onChange={(event) => setPickup(event.target.value)} value={pickup} />
+                    <Input
+                      id="pickup"
+                      onChange={(event) => setPickup(event.target.value)}
+                      placeholder={isRide ? "Ex: Crossgates bus stop, Downtown Albany stop, or specific off-campus pickup" : ""}
+                      value={pickup}
+                    />
+                    {isRide ? (
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Use this for the exact off-campus pickup spot if you are heading into campus.
+                      </p>
+                    ) : null}
                   </div>
                 </SectionCard>
               )}
@@ -561,13 +588,60 @@ export function RequestService() {
                     </SectionCard>
                   ) : (
                     <SectionCard description="Type the place where you want to meet." title="3. Where should it go?">
+                      {isRide ? (
+                        <div className="mb-4 grid gap-4 md:grid-cols-2">
+                          <div>
+                            <Label htmlFor="ride-pickup-area">Pickup region</Label>
+                            <Select onValueChange={setRidePickupArea} value={ridePickupArea}>
+                              <SelectTrigger id="ride-pickup-area">
+                                <SelectValue placeholder="Off-campus or campus edge" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Off-campus apartment">Off-campus apartment</SelectItem>
+                                <SelectItem value="Downtown Albany">Downtown Albany</SelectItem>
+                                <SelectItem value="Crossgates area">Crossgates area</SelectItem>
+                                <SelectItem value="Campus bus stop">Campus bus stop</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="ride-destination-area">Campus drop-off region</Label>
+                            <Select onValueChange={setRideDestinationArea} value={rideDestinationArea}>
+                              <SelectTrigger id="ride-destination-area">
+                                <SelectValue placeholder="Choose a campus destination" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Campus Center">Campus Center</SelectItem>
+                                <SelectItem value="Library">Library</SelectItem>
+                                <SelectItem value="State Quad">State Quad</SelectItem>
+                                <SelectItem value="Colonial Quad">Colonial Quad</SelectItem>
+                                <SelectItem value="Dutch Quad">Dutch Quad</SelectItem>
+                                <SelectItem value="Empire Commons">Empire Commons</SelectItem>
+                                <SelectItem value="Freedom Apartments">Freedom Apartments</SelectItem>
+                                <SelectItem value="Academic Podium">Academic Podium</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      ) : null}
                       <Label htmlFor="destination">{helperCopy.destinationLabel}</Label>
                       <Input
                         id="destination"
                         onChange={(event) => setDestination(event.target.value)}
-                        placeholder={helperCopy.destinationPlaceholder}
+                        placeholder={
+                          isRide
+                            ? "Ex: Off-campus apartment -> Campus Center bus stop"
+                            : helperCopy.destinationPlaceholder
+                        }
                         value={destination}
                       />
+                      {isRide ? (
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          This now supports off-campus pickup into campus, which lines up with the milestone ride story.
+                        </p>
+                      ) : null}
                     </SectionCard>
                   )}
 
