@@ -39,8 +39,47 @@ const sessionsCollection = db.collection("sessions");
 const requestsCollection = db.collection("requests");
 const ratingsCollection = db.collection("ratings");
 const messagesCollection = db.collection("messages");
-await requestsCollection.createIndex({ id: 1 }, { unique: true });
-await messagesCollection.createIndex({ requestId: 1 }, { unique: true });
+
+function hasSameIndexSpec(existingIndex, expectedKey, expectedOptions = {}) {
+  const existingKeyEntries = Object.entries(existingIndex.key || {});
+  const expectedKeyEntries = Object.entries(expectedKey);
+
+  if (existingKeyEntries.length !== expectedKeyEntries.length) {
+    return false;
+  }
+
+  for (const [key, value] of expectedKeyEntries) {
+    if (existingIndex.key?.[key] !== value) {
+      return false;
+    }
+  }
+
+  if (typeof expectedOptions.unique === "boolean" && Boolean(existingIndex.unique) !== expectedOptions.unique) {
+    return false;
+  }
+
+  return true;
+}
+
+async function ensureIndex(collection, key, options = {}) {
+  try {
+    await collection.createIndex(key, options);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === 85) {
+      const indexes = await collection.listIndexes().toArray();
+      const alreadyCovered = indexes.some((entry) => hasSameIndexSpec(entry, key, options));
+
+      if (alreadyCovered) {
+        return;
+      }
+    }
+
+    throw error;
+  }
+}
+
+await ensureIndex(requestsCollection, { id: 1 }, { unique: true });
+await ensureIndex(messagesCollection, { requestId: 1 }, { unique: true });
 const microsoftJwks = createRemoteJWKSet(new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"));
 const MAX_ACTIVE_REQUESTS_PER_USER = 3;
 
