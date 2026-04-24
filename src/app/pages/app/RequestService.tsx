@@ -2,7 +2,7 @@
 // Main request creation form for food delivery and rides.
 // Builds the final request payload and validates the pieces students enter.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, DollarSign, ImagePlus } from "lucide-react";
@@ -101,6 +101,7 @@ export function RequestService() {
   const [housingFloor, setHousingFloor] = useState("");
   const [housingDetails, setHousingDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
 
@@ -209,6 +210,7 @@ export function RequestService() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!token) return;
+    if (submitLockRef.current) return;
 
     const finalTime = timeMode === "now" ? "Now" : time.trim();
     const trimmedDestination = destination.trim();
@@ -253,6 +255,7 @@ export function RequestService() {
         : notes.trim();
 
     try {
+      submitLockRef.current = true;
       setIsSubmitting(true);
       const response = await api.createRequest(token, {
         serviceType,
@@ -277,6 +280,7 @@ export function RequestService() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not post request.");
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }

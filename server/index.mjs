@@ -39,6 +39,8 @@ const sessionsCollection = db.collection("sessions");
 const requestsCollection = db.collection("requests");
 const ratingsCollection = db.collection("ratings");
 const messagesCollection = db.collection("messages");
+await requestsCollection.createIndex({ id: 1 }, { unique: true });
+await messagesCollection.createIndex({ requestId: 1 }, { unique: true });
 const microsoftJwks = createRemoteJWKSet(new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"));
 const MAX_ACTIVE_REQUESTS_PER_USER = 3;
 
@@ -555,6 +557,36 @@ function decorateRequest(record, data) {
   };
 }
 
+function normalizeRequestField(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function findRecentDuplicateRequest(requests, candidate) {
+  const duplicateWindowMs = 10 * 60 * 1000;
+  const candidateCreatedAt = Date.now();
+
+  return requests.find((entry) => {
+    if (entry.userId !== candidate.userId) return false;
+    if (entry.status !== "open" && entry.status !== "accepted") return false;
+
+    const entryCreatedAt = new Date(entry.createdAt).getTime();
+    if (!Number.isFinite(entryCreatedAt) || candidateCreatedAt - entryCreatedAt > duplicateWindowMs) {
+      return false;
+    }
+
+    return (
+      normalizeRequestField(entry.serviceType) === normalizeRequestField(candidate.serviceType) &&
+      normalizeRequestField(entry.pickup) === normalizeRequestField(candidate.pickup) &&
+      normalizeRequestField(entry.destination) === normalizeRequestField(candidate.destination) &&
+      normalizeRequestField(entry.time) === normalizeRequestField(candidate.time) &&
+      normalizeRequestField(entry.payment) === normalizeRequestField(candidate.payment) &&
+      normalizeRequestField(entry.notes) === normalizeRequestField(candidate.notes) &&
+      normalizeRequestField(entry.orderEta) === normalizeRequestField(candidate.orderEta) &&
+      normalizeRequestField(entry.orderScreenshot) === normalizeRequestField(candidate.orderScreenshot)
+    );
+  });
+}
+
 function getZoneFromDestination(destination = "") {
   const normalized = destination.toLowerCase();
 
@@ -909,6 +941,18 @@ const server = http.createServer(async (request, response) => {
           sendJson(response, 400, { error: "Platform payment must leave room for the runner to earn money." });
           return;
         }
+      }
+
+      const duplicateRequest = findRecentDuplicateRequest(auth.data.requests, requestRecord);
+      if (duplicateRequest) {
+        sendJson(response, 409, {
+          error:
+            duplicateRequest.paymentStatus === "pending"
+              ? "This order is already pending payment. Open it from Messages instead of submitting again."
+              : "This order was already created recently. Open the existing request from Messages instead of submitting it again.",
+          request: decorateRequest(duplicateRequest, auth.data),
+        });
+        return;
       }
 
       auth.data.requests.push(requestRecord);
