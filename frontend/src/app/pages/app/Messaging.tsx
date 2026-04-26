@@ -59,13 +59,14 @@ export function Messaging() {
     if (!token || !requestId || hasProcessedPaymentRedirect.current) return;
 
     const paymentState = searchParams.get("payment");
+    const checkoutSessionId = searchParams.get("session_id") || undefined;
     if (paymentState !== "success" && paymentState !== "cancelled") return;
 
     hasProcessedPaymentRedirect.current = true;
 
     void (async () => {
       try {
-        const response = await api.confirmCheckout(token, requestId, paymentState);
+        const response = await api.confirmCheckout(token, requestId, paymentState, checkoutSessionId);
         setRequestRecord(response.request);
         await loadMessages();
         toast.success(

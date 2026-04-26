@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { api, type User } from "../lib/api";
+import { api, AUTH_EXPIRED_EVENT, type User } from "../lib/api";
 
 const TOKEN_KEY = "campus-connect-token";
 const USER_KEY = "campus-connect-user";
@@ -56,7 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
   const [loading, setLoading] = useState(true);
 
+  function clearSession() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    setToken(null);
+    setUser(null);
+  }
+
   useEffect(() => {
+    let active = true;
+
     async function loadSession() {
       if (!token) {
         setLoading(false);
@@ -65,20 +74,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const response = await api.session(token);
+        if (!active) return;
         setUser(response.user);
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
       } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        setToken(null);
-        setUser(null);
+        if (!active) return;
+        clearSession();
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     void loadSession();
+
+    return () => {
+      active = false;
+    };
   }, [token]);
+
+  useEffect(() => {
+    function handleAuthExpired() {
+      clearSession();
+    }
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -107,10 +130,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.user);
       },
       logout() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        setToken(null);
-        setUser(null);
+        const currentToken = token;
+        clearSession();
+        if (currentToken) {
+          void api.logout(currentToken).catch(() => {
+            // Local logout should still succeed even if the backend is unavailable.
+          });
+        }
       },
       async refreshUser() {
         if (!token) return;

@@ -13,7 +13,7 @@ export async function createStripeCheckoutSession({ amount, requestId, requester
 
   const form = new URLSearchParams();
   form.set("mode", "payment");
-  form.set("success_url", `${appUrl}/messages/${requestId}?payment=success`);
+  form.set("success_url", `${appUrl}/messages/${requestId}?payment=success&session_id={CHECKOUT_SESSION_ID}`);
   form.set("cancel_url", `${appUrl}/messages/${requestId}?payment=cancelled`);
   form.set("customer_email", requesterEmail);
   form.set("line_items[0][price_data][currency]", "usd");
@@ -35,6 +35,28 @@ export async function createStripeCheckoutSession({ amount, requestId, requester
 
   if (!response.ok) {
     throw new Error(payload?.error?.message || "Stripe checkout session failed.");
+  }
+
+  return payload;
+}
+
+export async function getStripeCheckoutSession(sessionId) {
+  const stripeSecretKey = getStripeSecretKey();
+
+  if (!stripeSecretKey) {
+    throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env or .env.local.");
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+    },
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || "Could not load the Stripe checkout session.");
   }
 
   return payload;

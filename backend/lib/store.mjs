@@ -89,6 +89,172 @@ export const seedData = {
   restaurants: ualbanyRestaurants,
 };
 
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const demoUsers = seedData.users.map((user) => ({ ...user }));
+const demoUserByEmail = new Map(demoUsers.map((user) => [user.email.toLowerCase(), user]));
+
+function isExpiredSession(session) {
+  if (!session?.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = new Date(session.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function normalizeDataRelationships(data) {
+  let changed = false;
+
+  if (!Array.isArray(data.users)) {
+    data.users = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.sessions)) {
+    data.sessions = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.requests)) {
+    data.requests = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.ratings)) {
+    data.ratings = [];
+    changed = true;
+  }
+  if (!data.messages || typeof data.messages !== "object") {
+    data.messages = {};
+    changed = true;
+  }
+
+  const canonicalUsers = [];
+  const userByEmail = new Map();
+  const userIdAliases = new Map();
+
+  for (const user of data.users) {
+    const email = String(user.email || "").trim().toLowerCase();
+    if (!email) {
+      changed = true;
+      continue;
+    }
+
+    if (user.email !== email) {
+      user.email = email;
+      changed = true;
+    }
+
+    const existing = userByEmail.get(email);
+    if (!existing) {
+      userByEmail.set(email, user);
+      canonicalUsers.push(user);
+      userIdAliases.set(user.id, user.id);
+      continue;
+    }
+
+    const demoUser = demoUserByEmail.get(email);
+    const shouldPreferCurrent = demoUser && user.id === demoUser.id && existing.id !== demoUser.id;
+    const keptUser = shouldPreferCurrent ? user : existing;
+    const droppedUser = shouldPreferCurrent ? existing : user;
+
+    if (shouldPreferCurrent) {
+      const existingIndex = canonicalUsers.indexOf(existing);
+      canonicalUsers[existingIndex] = user;
+      userByEmail.set(email, user);
+    }
+
+    userIdAliases.set(droppedUser.id, keptUser.id);
+    changed = true;
+  }
+
+  if (canonicalUsers.length !== data.users.length) {
+    data.users = canonicalUsers;
+    changed = true;
+  }
+
+  const resolveUserId = (userId) => userIdAliases.get(userId) || userId;
+
+  for (const request of data.requests) {
+    const nextUserId = resolveUserId(request.userId);
+    if (nextUserId !== request.userId) {
+      request.userId = nextUserId;
+      changed = true;
+    }
+    if (request.acceptedBy) {
+      const nextAcceptedBy = resolveUserId(request.acceptedBy);
+      if (nextAcceptedBy !== request.acceptedBy) {
+        request.acceptedBy = nextAcceptedBy;
+        changed = true;
+      }
+    }
+  }
+
+  for (const rating of data.ratings) {
+    const nextAuthorUserId = resolveUserId(rating.authorUserId);
+    const nextTargetUserId = resolveUserId(rating.targetUserId);
+    if (nextAuthorUserId !== rating.authorUserId) {
+      rating.authorUserId = nextAuthorUserId;
+      changed = true;
+    }
+    if (nextTargetUserId !== rating.targetUserId) {
+      rating.targetUserId = nextTargetUserId;
+      changed = true;
+    }
+  }
+
+  for (const messages of Object.values(data.messages)) {
+    if (!Array.isArray(messages)) continue;
+    for (const message of messages) {
+      const nextSenderId = resolveUserId(message.senderId);
+      if (nextSenderId !== message.senderId) {
+        message.senderId = nextSenderId;
+        changed = true;
+      }
+    }
+  }
+
+  const validUserIds = new Set(data.users.map((user) => user.id));
+  const seenTokens = new Set();
+  const normalizedSessions = [];
+
+  for (const session of data.sessions) {
+    if (!session?.token || !validUserIds.has(resolveUserId(session.userId)) || seenTokens.has(session.token)) {
+      changed = true;
+      continue;
+    }
+
+    const nextUserId = resolveUserId(session.userId);
+    if (nextUserId !== session.userId) {
+      session.userId = nextUserId;
+      changed = true;
+    }
+
+    if (!session.createdAt) {
+      session.createdAt = new Date().toISOString();
+      changed = true;
+    }
+    if (!session.expiresAt) {
+      const createdAt = new Date(session.createdAt).getTime();
+      const baseTime = Number.isFinite(createdAt) ? createdAt : Date.now();
+      session.expiresAt = new Date(baseTime + SESSION_TTL_MS).toISOString();
+      changed = true;
+    }
+
+    if (isExpiredSession(session)) {
+      changed = true;
+      continue;
+    }
+
+    seenTokens.add(session.token);
+    normalizedSessions.push(session);
+  }
+
+  if (normalizedSessions.length !== data.sessions.length) {
+    data.sessions = normalizedSessions;
+    changed = true;
+  }
+
+  return changed;
+}
+
 export async function ensureDataFile() {
   await fs.mkdir(dataDir, { recursive: true });
 
@@ -109,7 +275,15 @@ export async function readData() {
   const data = JSON.parse(raw);
 
   let changed = false;
+  changed = normalizeDataRelationships(data) || changed;
   const normalizedRestaurants = JSON.stringify(ualbanyRestaurants);
+
+  for (const demoUser of demoUsers) {
+    if (!data.users.some((entry) => entry.email === demoUser.email.toLowerCase())) {
+      data.users.push({ ...demoUser });
+      changed = true;
+    }
+  }
 
   for (const user of data.users) {
     if (

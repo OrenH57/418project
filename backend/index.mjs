@@ -7,16 +7,29 @@ import path from "node:path";
 import { MongoClient } from "mongodb";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
   DISCOUNT_RATE,
   MIN_PAYMENT_OFFER,
-  getAzureClientId,
-  getAzureTenantId,
   loadEnv,
   ualbanyRestaurants,
 } from "./lib/config.mjs";
-import { createStripeCheckoutSession } from "./lib/payments.mjs";
+import { createToken, hashPassword, isCampusEmail, verifyPassword } from "./lib/auth.mjs";
+import { buildAdminOverview, applyAutomaticModeration, blockedRequestKeywords, requireAdmin } from "./lib/admin.mjs";
+import {
+  canAccessRequest,
+  decorateRequest,
+  findRecentDuplicateRequest,
+  getCampusSnapshot,
+} from "./lib/requests.mjs";
+import { verifyMicrosoftIdToken } from "./lib/microsoftAuth.mjs";
+import { createStripeCheckoutSession, getStripeCheckoutSession } from "./lib/payments.mjs";
+import {
+  handleAdminRoute,
+  handleMessagingRoute,
+  handlePaymentsRoute,
+  handleProfileRoute,
+  handleRatingsRoute,
+} from "./lib/routeGroups.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,68 +93,8 @@ async function ensureIndex(collection, key, options = {}) {
 
 await ensureIndex(requestsCollection, { id: 1 }, { unique: true });
 await ensureIndex(messagesCollection, { requestId: 1 }, { unique: true });
-const microsoftJwks = createRemoteJWKSet(new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"));
 const MAX_ACTIVE_REQUESTS_PER_USER = 3;
-
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password, storedPassword) {
-  if (!storedPassword.includes(":")) {
-    return storedPassword === password;
-  }
-
-  const [salt, storedHash] = storedPassword.split(":");
-  const computedHash = crypto.scryptSync(password, salt, 64);
-  const originalHash = Buffer.from(storedHash, "hex");
-
-  if (computedHash.length !== originalHash.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(computedHash, originalHash);
-}
-
-function isCampusEmail(email) {
-  return email.endsWith(".edu") || email.endsWith("@albany.edu");
-}
-
-async function verifyMicrosoftIdToken(idToken) {
-  const azureClientId = getAzureClientId();
-  const azureTenantId = getAzureTenantId();
-
-  if (!azureClientId || !azureTenantId) {
-    throw new Error("Microsoft sign-in is not configured on the backend yet.");
-  }
-
-  const { payload } = await jwtVerify(idToken, microsoftJwks, {
-    audience: azureClientId,
-    issuer: [
-      `https://login.microsoftonline.com/${azureTenantId}/v2.0`,
-      `https://sts.windows.net/${azureTenantId}/`,
-    ],
-  });
-
-  if (payload.tid !== azureTenantId) {
-    throw new Error("Only University at Albany Microsoft accounts are allowed.");
-  }
-
-  const email = String(
-    payload.preferred_username || payload.email || payload.upn || "",
-  ).trim().toLowerCase();
-
-  if (!email || !isCampusEmail(email)) {
-    throw new Error("Only campus Outlook addresses are allowed.");
-  }
-
-  return {
-    email,
-    name: String(payload.name || email.split("@")[0] || "UAlbany Student").trim(),
-  };
-}
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const seedData = {
   users: [
@@ -253,6 +206,187 @@ const seedData = {
 const demoUsers = seedData.users.map((user) => ({
   ...user,
 }));
+const demoUserByEmail = new Map(demoUsers.map((user) => [user.email.toLowerCase(), user]));
+
+function createSessionRecord(userId) {
+  const createdAt = new Date();
+
+  return {
+    token: createToken(),
+    userId,
+    createdAt: createdAt.toISOString(),
+    expiresAt: new Date(createdAt.getTime() + SESSION_TTL_MS).toISOString(),
+  };
+}
+
+function replaceUserSession(data, userId) {
+  const session = createSessionRecord(userId);
+  data.sessions = (Array.isArray(data.sessions) ? data.sessions : []).filter((entry) => entry.userId !== userId);
+  data.sessions.push(session);
+  return session;
+}
+
+function isExpiredSession(session) {
+  if (!session?.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = new Date(session.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function normalizeDataRelationships(data) {
+  let changed = false;
+
+  if (!Array.isArray(data.users)) {
+    data.users = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.sessions)) {
+    data.sessions = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.requests)) {
+    data.requests = [];
+    changed = true;
+  }
+  if (!Array.isArray(data.ratings)) {
+    data.ratings = [];
+    changed = true;
+  }
+  if (!data.messages || typeof data.messages !== "object") {
+    data.messages = {};
+    changed = true;
+  }
+
+  const canonicalUsers = [];
+  const userByEmail = new Map();
+  const userIdAliases = new Map();
+
+  for (const user of data.users) {
+    const email = String(user.email || "").trim().toLowerCase();
+    if (!email) {
+      changed = true;
+      continue;
+    }
+
+    if (user.email !== email) {
+      user.email = email;
+      changed = true;
+    }
+
+    const existing = userByEmail.get(email);
+    if (!existing) {
+      userByEmail.set(email, user);
+      canonicalUsers.push(user);
+      userIdAliases.set(user.id, user.id);
+      continue;
+    }
+
+    const demoUser = demoUserByEmail.get(email);
+    const shouldPreferCurrent = demoUser && user.id === demoUser.id && existing.id !== demoUser.id;
+    const keptUser = shouldPreferCurrent ? user : existing;
+    const droppedUser = shouldPreferCurrent ? existing : user;
+
+    if (shouldPreferCurrent) {
+      const existingIndex = canonicalUsers.indexOf(existing);
+      canonicalUsers[existingIndex] = user;
+      userByEmail.set(email, user);
+    }
+
+    userIdAliases.set(droppedUser.id, keptUser.id);
+    changed = true;
+  }
+
+  if (canonicalUsers.length !== data.users.length) {
+    data.users = canonicalUsers;
+    changed = true;
+  }
+
+  const resolveUserId = (userId) => userIdAliases.get(userId) || userId;
+
+  for (const requestRecord of data.requests) {
+    const nextUserId = resolveUserId(requestRecord.userId);
+    if (nextUserId !== requestRecord.userId) {
+      requestRecord.userId = nextUserId;
+      changed = true;
+    }
+    if (requestRecord.acceptedBy) {
+      const nextAcceptedBy = resolveUserId(requestRecord.acceptedBy);
+      if (nextAcceptedBy !== requestRecord.acceptedBy) {
+        requestRecord.acceptedBy = nextAcceptedBy;
+        changed = true;
+      }
+    }
+  }
+
+  for (const rating of data.ratings) {
+    const nextAuthorUserId = resolveUserId(rating.authorUserId);
+    const nextTargetUserId = resolveUserId(rating.targetUserId);
+    if (nextAuthorUserId !== rating.authorUserId) {
+      rating.authorUserId = nextAuthorUserId;
+      changed = true;
+    }
+    if (nextTargetUserId !== rating.targetUserId) {
+      rating.targetUserId = nextTargetUserId;
+      changed = true;
+    }
+  }
+
+  for (const messages of Object.values(data.messages)) {
+    if (!Array.isArray(messages)) continue;
+    for (const message of messages) {
+      const nextSenderId = resolveUserId(message.senderId);
+      if (nextSenderId !== message.senderId) {
+        message.senderId = nextSenderId;
+        changed = true;
+      }
+    }
+  }
+
+  const validUserIds = new Set(data.users.map((user) => user.id));
+  const seenTokens = new Set();
+  const normalizedSessions = [];
+
+  for (const session of data.sessions) {
+    if (!session?.token || !validUserIds.has(resolveUserId(session.userId)) || seenTokens.has(session.token)) {
+      changed = true;
+      continue;
+    }
+
+    const nextUserId = resolveUserId(session.userId);
+    if (nextUserId !== session.userId) {
+      session.userId = nextUserId;
+      changed = true;
+    }
+
+    if (!session.createdAt) {
+      session.createdAt = new Date().toISOString();
+      changed = true;
+    }
+    if (!session.expiresAt) {
+      const createdAt = new Date(session.createdAt).getTime();
+      const baseTime = Number.isFinite(createdAt) ? createdAt : Date.now();
+      session.expiresAt = new Date(baseTime + SESSION_TTL_MS).toISOString();
+      changed = true;
+    }
+
+    if (isExpiredSession(session)) {
+      changed = true;
+      continue;
+    }
+
+    seenTokens.add(session.token);
+    normalizedSessions.push(session);
+  }
+
+  if (normalizedSessions.length !== data.sessions.length) {
+    data.sessions = normalizedSessions;
+    changed = true;
+  }
+
+  return changed;
+}
 
 async function ensureDemoUsers() {
   for (const user of demoUsers) {
@@ -339,9 +473,10 @@ async function readData() {
   };
 
   let changed = false;
+  changed = normalizeDataRelationships(data) || changed;
 
   for (const demoUser of demoUsers) {
-    if (!data.users.some((entry) => entry.email === demoUser.email)) {
+    if (!data.users.some((entry) => entry.email === demoUser.email.toLowerCase())) {
       data.users.push({ ...demoUser });
       changed = true;
     }
@@ -522,31 +657,10 @@ async function readData() {
 }
 
 async function writeData(data) {
-  console.log("writeData users count:", data.users?.length);
-  console.log("writeData sessions count:", data.sessions?.length);
-  console.log("writeData requests count:", data.requests?.length);
-  console.log("writeData ratings count:", data.ratings?.length);
-  console.log("writeData messages count:", Object.keys(data.messages || {}).length);
-
-  await usersCollection.deleteMany({});
-  if (data.users?.length) {
-    await usersCollection.insertMany(data.users.map(({ _id, ...rest }) => rest));
-  }
-
-  await sessionsCollection.deleteMany({});
-  if (data.sessions?.length) {
-    await sessionsCollection.insertMany(data.sessions.map(({ _id, ...rest }) => rest));
-  }
-
-  await requestsCollection.deleteMany({});
-  if (data.requests?.length) {
-    await requestsCollection.insertMany(data.requests.map(({ _id, ...rest }) => rest));
-  }
-
-  await ratingsCollection.deleteMany({});
-  if (data.ratings?.length) {
-    await ratingsCollection.insertMany(data.ratings.map(({ _id, ...rest }) => rest));
-  }
+  await replaceCollectionDocuments(usersCollection, data.users);
+  await replaceCollectionDocuments(sessionsCollection, data.sessions);
+  await replaceCollectionDocuments(requestsCollection, data.requests);
+  await replaceCollectionDocuments(ratingsCollection, data.ratings);
 
   await messagesCollection.deleteMany({});
   const messageDocs = Object.entries(data.messages || {}).map(([requestId, messages]) => ({
@@ -559,6 +673,15 @@ async function writeData(data) {
   }
 }
 
+async function replaceCollectionDocuments(collection, documents = []) {
+  await collection.deleteMany({});
+  if (!documents.length) {
+    return;
+  }
+
+  await collection.insertMany(documents.map(({ _id, ...rest }) => rest));
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
@@ -567,10 +690,6 @@ function sendJson(response, statusCode, payload) {
     "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
   });
   response.end(JSON.stringify(payload));
-}
-
-function createToken() {
-  return crypto.randomBytes(24).toString("hex");
 }
 
 function sanitizeUser(user) {
@@ -596,77 +715,6 @@ function sanitizeUser(user) {
   };
 }
 
-const blockedRequestKeywords = [
-  "weapon",
-  "drugs",
-  "alcohol run",
-  "fake id",
-  "stolen",
-];
-
-function requireAdmin(user, response) {
-  if (user.role !== "admin") {
-    sendJson(response, 403, { error: "Only admin accounts can access that page." });
-    return false;
-  }
-  return true;
-}
-
-function matchesBlockedKeyword(requestRecord) {
-  const haystack = [
-    requestRecord.pickup,
-    requestRecord.destination,
-    requestRecord.notes,
-  ]
-    .join(" ")
-    .toLowerCase();
-  return blockedRequestKeywords.find((keyword) => haystack.includes(keyword));
-}
-
-function applyAutomaticModeration(requestRecord) {
-  const blockedKeyword = matchesBlockedKeyword(requestRecord);
-  if (!blockedKeyword) {
-    return;
-  }
-
-  requestRecord.flagged = true;
-  requestRecord.flaggedReason = `Matched blocked keyword: ${blockedKeyword}`;
-  requestRecord.moderationStatus = "flagged";
-}
-
-function buildAdminOverview(data) {
-  const visibleRequests = data.requests.filter((entry) => entry.moderationStatus !== "removed");
-  const grossVolume = visibleRequests.reduce(
-    (total, entry) => total + (Number.isFinite(Number.parseFloat(entry.payment || "0")) ? Number.parseFloat(entry.payment) : 0),
-    0,
-  );
-
-  return {
-    flaggedRequests: data.requests
-      .filter((entry) => entry.moderationStatus === "flagged")
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-    moderatedRequests: data.requests
-      .filter((entry) => entry.moderationStatus === "removed")
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-    users: data.users
-      .slice()
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map((entry) => sanitizeUser(entry)),
-    blockedKeywords: blockedRequestKeywords,
-    metrics: {
-      activeUsers: data.users.filter((entry) => !entry.suspended).length,
-      openRequests: visibleRequests.filter((entry) => entry.status === "open").length,
-      flaggedCases: data.requests.filter((entry) => entry.moderationStatus === "flagged").length,
-      suspendedUsers: data.users.filter((entry) => entry.suspended).length,
-      grossVolume: `$${grossVolume.toFixed(0)}`,
-    },
-  };
-}
-
-function canAccessRequest(userId, requestRecord) {
-  return requestRecord.userId === userId || requestRecord.acceptedBy === userId;
-}
-
 function getToken(request) {
   const authorization = request.headers.authorization || "";
   if (authorization.startsWith("Bearer ")) {
@@ -685,13 +733,19 @@ async function requireUser(request, response) {
   const data = await readData();
   const session = data.sessions.find((entry) => entry.token === token);
 
-  if (!session) {
+  if (!session || isExpiredSession(session)) {
+    if (session) {
+      data.sessions = data.sessions.filter((entry) => entry.token !== token);
+      await writeData(data);
+    }
     sendJson(response, 401, { error: "Session expired. Please log in again." });
     return null;
   }
 
   const user = data.users.find((entry) => entry.id === session.userId);
   if (!user) {
+    data.sessions = data.sessions.filter((entry) => entry.token !== token);
+    await writeData(data);
     sendJson(response, 401, { error: "User not found." });
     return null;
   }
@@ -706,125 +760,6 @@ async function requireUser(request, response) {
   }
 
   return { data, user };
-}
-
-function formatRelativeTime(iso) {
-  const diffMinutes = Math.max(
-    1,
-    Math.round((Date.now() - new Date(iso).getTime()) / 60000),
-  );
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes} min ago`;
-  }
-
-  const hours = Math.round(diffMinutes / 60);
-  return `${hours} hr ago`;
-}
-
-function decorateRequest(record, data) {
-  const courier = record.acceptedBy
-    ? data.users.find((entry) => entry.id === record.acceptedBy)
-    : null;
-  const requester = data.users.find((entry) => entry.id === record.userId);
-
-  return {
-    ...record,
-    requesterPhone: requester?.phone || "",
-    timeAgo: formatRelativeTime(record.createdAt),
-    courierName: courier?.name ?? null,
-  };
-}
-
-function normalizeRequestField(value) {
-  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function findRecentDuplicateRequest(requests, candidate) {
-  const duplicateWindowMs = 10 * 60 * 1000;
-  const candidateCreatedAt = Date.now();
-
-  return requests.find((entry) => {
-    if (entry.userId !== candidate.userId) return false;
-    if (entry.status !== "open" && entry.status !== "accepted") return false;
-
-    const entryCreatedAt = new Date(entry.createdAt).getTime();
-    if (!Number.isFinite(entryCreatedAt) || candidateCreatedAt - entryCreatedAt > duplicateWindowMs) {
-      return false;
-    }
-
-    return (
-      normalizeRequestField(entry.serviceType) === normalizeRequestField(candidate.serviceType) &&
-      normalizeRequestField(entry.pickup) === normalizeRequestField(candidate.pickup) &&
-      normalizeRequestField(entry.destination) === normalizeRequestField(candidate.destination) &&
-      normalizeRequestField(entry.time) === normalizeRequestField(candidate.time) &&
-      normalizeRequestField(entry.payment) === normalizeRequestField(candidate.payment) &&
-      normalizeRequestField(entry.notes) === normalizeRequestField(candidate.notes) &&
-      normalizeRequestField(entry.orderEta) === normalizeRequestField(candidate.orderEta) &&
-      normalizeRequestField(entry.orderScreenshot) === normalizeRequestField(candidate.orderScreenshot)
-    );
-  });
-}
-
-function getZoneFromDestination(destination = "") {
-  const normalized = destination.toLowerCase();
-
-  if (normalized.includes("state")) return "State Quad";
-  if (normalized.includes("dutch")) return "Dutch Quad";
-  if (normalized.includes("colonial")) return "Colonial Quad";
-  if (normalized.includes("indigenous")) return "Indigenous Quad";
-  if (normalized.includes("empire")) return "Empire Commons";
-  if (normalized.includes("freedom")) return "Freedom Apartments";
-  if (normalized.includes("liberty")) return "Liberty Terrace";
-  if (normalized.includes("library")) return "Library";
-  if (normalized.includes("massry")) return "Massry Center";
-  return "Campus Center";
-}
-
-function getCampusSnapshot(data, currentUserId) {
-  const openRequests = data.requests.filter((entry) => entry.status === "open");
-  const onlineCouriers = data.users.filter((entry) => entry.courierOnline).length;
-  const avgPayout =
-    openRequests.length > 0
-      ? Number(
-          (
-            openRequests.reduce((total, entry) => total + Number.parseFloat(entry.payment || "0"), 0) /
-            openRequests.length
-          ).toFixed(0),
-        )
-      : 0;
-
-  const zoneCounts = new Map();
-  for (const requestRecord of openRequests) {
-    const zone = getZoneFromDestination(requestRecord.destination || requestRecord.pickup || "");
-    zoneCounts.set(zone, (zoneCounts.get(zone) || 0) + 1);
-  }
-
-  const busiestZone =
-    [...zoneCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || "Campus Center";
-
-  const myRecentRequests = data.requests
-    .filter((entry) => entry.userId === currentUserId)
-    .slice()
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, 3)
-    .map((entry) => ({
-      id: entry.id,
-      serviceType: entry.serviceType,
-      pickup: entry.pickup,
-      destination: entry.destination,
-      payment: entry.payment,
-      notes: entry.notes,
-    }));
-
-  return {
-    onlineCouriers,
-    openRequests: openRequests.length,
-    avgPayout,
-    busiestZone,
-    lunchRushLabel: openRequests.length >= 4 ? "Busy right now" : openRequests.length >= 2 ? "Picking up" : "Quiet right now",
-    myRecentRequests,
-  };
 }
 
 async function readBody(request) {
@@ -910,11 +845,10 @@ const server = http.createServer(async (request, response) => {
         earnings: 0,
       };
 
-      const token = createToken();
       data.users.push(user);
-      data.sessions.push({ token, userId: user.id });
+      const session = replaceUserSession(data, user.id);
       await writeData(data);
-      sendJson(response, 201, { token, user: sanitizeUser(user) });
+      sendJson(response, 201, { token: session.token, user: sanitizeUser(user) });
       return;
     }
 
@@ -980,10 +914,9 @@ const server = http.createServer(async (request, response) => {
         data.users.push(user);
       }
 
-      const token = createToken();
-      data.sessions.push({ token, userId: user.id });
+      const session = replaceUserSession(data, user.id);
       await writeData(data);
-      sendJson(response, 200, { token, user: sanitizeUser(user) });
+      sendJson(response, 200, { token: session.token, user: sanitizeUser(user) });
       return;
     }
 
@@ -1003,10 +936,24 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const token = createToken();
-      data.sessions.push({ token, userId: user.id });
+      const session = replaceUserSession(data, user.id);
       await writeData(data);
-      sendJson(response, 200, { token, user: sanitizeUser(user) });
+      sendJson(response, 200, { token: session.token, user: sanitizeUser(user) });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      const token = getToken(request);
+      if (token) {
+        const data = await readData();
+        const nextSessions = data.sessions.filter((entry) => entry.token !== token);
+        if (nextSessions.length !== data.sessions.length) {
+          data.sessions = nextSessions;
+          await writeData(data);
+        }
+      }
+
+      sendJson(response, 200, { ok: true });
       return;
     }
 
@@ -1132,11 +1079,8 @@ const server = http.createServer(async (request, response) => {
 
       const duplicateRequest = findRecentDuplicateRequest(auth.data.requests, requestRecord);
       if (duplicateRequest) {
-        sendJson(response, 409, {
-          error:
-            duplicateRequest.paymentStatus === "pending"
-              ? "This order is already pending payment. Open it from Messages instead of submitting again."
-              : "This order was already created recently. Open the existing request from Messages instead of submitting it again.",
+        sendJson(response, 200, {
+          duplicate: true,
           request: decorateRequest(duplicateRequest, auth.data),
         });
         return;
@@ -1284,436 +1228,28 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "GET" && url.pathname.startsWith("/api/messages/")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Conversation not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(response, 403, { error: "You do not have access to this conversation." });
-        return;
-      }
-
-      sendJson(response, 200, {
-        request: decorateRequest(requestRecord, auth.data),
-        messages: (auth.data.messages[requestId] || []).map((message) => ({
-          ...message,
-          mine: message.senderId === auth.user.id,
-          time: new Date(message.createdAt).toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          }),
-        })),
-      });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/messages/")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-      const body = await readBody(request);
-      const text = String(body.text || "").trim();
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Conversation not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(response, 403, { error: "You do not have access to this conversation." });
-        return;
-      }
-
-      if (!text) {
-        sendJson(response, 400, { error: "Message text is required." });
-        return;
-      }
-
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text,
-        createdAt: new Date().toISOString(),
-      });
-      await writeData(auth.data);
-      sendJson(response, 201, { ok: true });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/api/ratings/")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(response, 403, { error: "You do not have access to this rating flow." });
-        return;
-      }
-
-      const isRequester = requestRecord.userId === auth.user.id;
-      const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
-      const targetUser = targetUserId ? auth.data.users.find((entry) => entry.id === targetUserId) ?? null : null;
-      const existingRating =
-        auth.data.ratings.find((entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id) ?? null;
-
-      sendJson(response, 200, {
-        canRate: Boolean(targetUser),
-        requestId,
-        targetUser: targetUser ? { id: targetUser.id, name: targetUser.name } : null,
-        existingRating,
-      });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/ratings/")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(response, 403, { error: "You do not have access to this rating flow." });
-        return;
-      }
-
-      const body = await readBody(request);
-      const ratingValue = Number(body.rating);
-      const comment = String(body.comment || "").trim();
-      const isRequester = requestRecord.userId === auth.user.id;
-      const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
-
-      if (!targetUserId) {
-        sendJson(response, 400, { error: "A courier must accept the request before you can leave a rating." });
-        return;
-      }
-
-      if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5) {
-        sendJson(response, 400, { error: "Ratings must be a whole number between 1 and 5." });
-        return;
-      }
-
-      const targetUser = auth.data.users.find((entry) => entry.id === targetUserId);
-
-      if (!targetUser) {
-        sendJson(response, 404, { error: "The person you are trying to rate was not found." });
-        return;
-      }
-
-      const ratingRecord = {
-        requestId,
-        authorUserId: auth.user.id,
-        targetUserId,
-        rating: ratingValue,
-        comment,
-        createdAt: new Date().toISOString(),
-      };
-      const existingIndex = auth.data.ratings.findIndex(
-        (entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id,
-      );
-
-      if (existingIndex >= 0) {
-        auth.data.ratings[existingIndex] = ratingRecord;
-      } else {
-        auth.data.ratings.push(ratingRecord);
-      }
-
-      const userRatings = auth.data.ratings.filter((entry) => entry.targetUserId === targetUserId);
-      const averageRating =
-        userRatings.reduce((total, entry) => total + entry.rating, 0) / userRatings.length;
-      targetUser.rating = Number(averageRating.toFixed(1));
-
-      await writeData(auth.data);
-      sendJson(response, 201, {
-        ok: true,
-        rating: ratingRecord,
-        targetUser: { id: targetUser.id, name: targetUser.name, rating: targetUser.rating },
-      });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/profile") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      sendJson(response, 200, {
-        profile: {
-          ...sanitizeUser(auth.user),
-          postedRequests: auth.data.requests.filter((entry) => entry.userId === auth.user.id).length,
-          acceptedRequests: auth.data.requests.filter((entry) => entry.acceptedBy === auth.user.id).length,
-        },
-      });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/profile/request-verification-code") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      auth.user.pendingVerificationCode = code;
-      auth.user.pendingVerificationIssuedAt = new Date().toISOString();
-      await writeData(auth.data);
-      sendJson(response, 200, { ok: true, previewCode: code });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/profile/verify-code") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const body = await readBody(request);
-      const code = String(body.code || "").trim();
-
-      if (!code || auth.user.pendingVerificationCode !== code) {
-        sendJson(response, 400, { error: "That verification code is not correct." });
-        return;
-      }
-
-      auth.user.foodSafetyVerified = true;
-      delete auth.user.pendingVerificationCode;
-      delete auth.user.pendingVerificationIssuedAt;
-      await writeData(auth.data);
-      sendJson(response, 200, { user: sanitizeUser(auth.user) });
-      return;
-    }
-
-    if (request.method === "PATCH" && url.pathname === "/api/profile") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const body = await readBody(request);
-      auth.user.courierMode = Boolean(body.courierMode);
-      auth.user.bio = typeof body.bio === "string" ? body.bio : auth.user.bio;
-      if (typeof body.notificationsEnabled === "boolean") {
-        auth.user.notificationsEnabled = body.notificationsEnabled;
-      }
-      if (typeof body.courierOnline === "boolean") {
-        auth.user.courierOnline = body.courierOnline;
-      }
-      if (typeof body.ualbanyIdImage === "string") {
-        auth.user.ualbanyIdImage = body.ualbanyIdImage;
-        auth.user.ualbanyIdUploaded = Boolean(body.ualbanyIdImage.trim());
-      }
-      await writeData(auth.data);
-      sendJson(response, 200, { user: sanitizeUser(auth.user) });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/admin/overview") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-      if (!requireAdmin(auth.user, response)) return;
-
-      sendJson(response, 200, buildAdminOverview(auth.data));
-      return;
-    }
-
-    if (request.method === "PATCH" && url.pathname.startsWith("/api/admin/requests/")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-      if (!requireAdmin(auth.user, response)) return;
-
-      const requestId = url.pathname.split("/")[4];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-      const body = await readBody(request);
-      const action = String(body.action || "");
-      const reason = String(body.reason || "").trim();
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (action === "flag") {
-        requestRecord.flagged = true;
-        requestRecord.flaggedReason = reason || requestRecord.flaggedReason || "Flagged by admin review.";
-        requestRecord.moderationStatus = "flagged";
-      } else if (action === "remove") {
-        requestRecord.flagged = true;
-        requestRecord.flaggedReason = reason || requestRecord.flaggedReason || "Removed by admin.";
-        requestRecord.moderationStatus = "removed";
-        requestRecord.removedAt = new Date().toISOString();
-        requestRecord.removedBy = auth.user.id;
-      } else if (action === "clear") {
-        requestRecord.flagged = false;
-        requestRecord.flaggedReason = "";
-        requestRecord.moderationStatus = "clear";
-        requestRecord.removedAt = "";
-        requestRecord.removedBy = "";
-      } else {
-        sendJson(response, 400, { error: "Unsupported moderation action." });
-        return;
-      }
-
-      await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
-
-    if (request.method === "PATCH" && url.pathname.startsWith("/api/admin/users/") && url.pathname.endsWith("/suspension")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-      if (!requireAdmin(auth.user, response)) return;
-
-      const userId = url.pathname.split("/")[4];
-      const targetUser = auth.data.users.find((entry) => entry.id === userId);
-      const body = await readBody(request);
-      const suspended = body.suspended === true;
-      const reason = String(body.reason || "").trim();
-
-      if (!targetUser) {
-        sendJson(response, 404, { error: "User not found." });
-        return;
-      }
-
-      if (targetUser.role === "admin" && targetUser.id === auth.user.id) {
-        sendJson(response, 400, { error: "Admins cannot suspend their own account." });
-        return;
-      }
-
-      targetUser.suspended = suspended;
-      targetUser.suspendedReason = suspended ? reason || "Suspended by admin review." : "";
-
-      if (suspended) {
-        for (const requestRecord of auth.data.requests) {
-          if (requestRecord.userId === targetUser.id || requestRecord.acceptedBy === targetUser.id) {
-            requestRecord.flagged = true;
-            requestRecord.flaggedReason = `Connected to suspended account: ${targetUser.name}`;
-            if (requestRecord.moderationStatus === "clear") {
-              requestRecord.moderationStatus = "flagged";
-            }
-          }
-        }
-      }
-
-      await writeData(auth.data);
-      sendJson(response, 200, { user: sanitizeUser(targetUser) });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/payments/create-checkout-session") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const body = await readBody(request);
-      const requestId = String(body.requestId || "");
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.userId !== auth.user.id) {
-        sendJson(response, 403, { error: "Only the requester can pay the delivery fee for this request." });
-        return;
-      }
-
-      const amountNumber = Math.round(Number.parseFloat(requestRecord.payment) * 100);
-
-      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-        sendJson(response, 400, { error: "Request payment amount is invalid." });
-        return;
-      }
-
-      if (requestRecord.paymentStatus === "paid") {
-        sendJson(response, 409, { error: "This request has already been paid." });
-        return;
-      }
-
-      const session = await createStripeCheckoutSession({
-        amount: amountNumber,
-        requestId,
-        requesterEmail: auth.user.email,
-        description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
-      });
-
-      requestRecord.paymentStatus = "pending";
-      requestRecord.stripeCheckoutSessionId = String(session.id || "");
-      await writeData(auth.data);
-      sendJson(response, 200, { url: session.url });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/payments/confirm") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const body = await readBody(request);
-      const requestId = String(body.requestId || "");
-      const paymentState = String(body.paymentState || "");
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.userId !== auth.user.id) {
-        sendJson(response, 403, { error: "Only the requester can update payment status for this request." });
-        return;
-      }
-
-      if (paymentState === "success") {
-        requestRecord.paymentStatus = "paid";
-        requestRecord.paidAt = new Date().toISOString();
-      } else if (paymentState === "cancelled") {
-        requestRecord.paymentStatus = "unpaid";
-      } else {
-        sendJson(response, 400, { error: "Unsupported payment state." });
-        return;
-      }
-
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text:
-          paymentState === "success"
-            ? "Payment was completed in Stripe Checkout."
-            : "Stripe Checkout was cancelled before payment was completed.",
-        createdAt: new Date().toISOString(),
-      });
-      await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
+    const routeContext = {
+      request,
+      response,
+      url,
+      requireUser,
+      sendJson,
+      readBody,
+      writeData,
+      sanitizeUser,
+      canAccessRequest,
+      decorateRequest,
+      requireAdmin,
+      buildAdminOverview,
+      createStripeCheckoutSession,
+      getStripeCheckoutSession,
+    };
+
+    if (await handleMessagingRoute(routeContext)) return;
+    if (await handleRatingsRoute(routeContext)) return;
+    if (await handleProfileRoute(routeContext)) return;
+    if (await handleAdminRoute(routeContext)) return;
+    if (await handlePaymentsRoute(routeContext)) return;
 
     sendJson(response, 404, { error: "Route not found." });
   } catch (error) {
@@ -1724,6 +1260,8 @@ const server = http.createServer(async (request, response) => {
 });
 
 await ensureSeedData();
+await readData();
+await ensureIndex(usersCollection, { email: 1 }, { unique: true });
 
 const port = Number(process.env.PORT || 4174);
 const host = process.env.HOST || "0.0.0.0";

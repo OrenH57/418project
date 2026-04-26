@@ -3,6 +3,7 @@
 // Pages should call backend routes through this file instead of building fetch calls inline.
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+export const AUTH_EXPIRED_EVENT = "campus-connect-auth-expired";
 
 export type User = {
   id: string;
@@ -138,6 +139,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
       typeof payload.error === "string"
         ? payload.error
         : "Request failed.";
+    if (response.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { message: errorMessage } }));
+    }
     throw new Error(errorMessage);
   }
 
@@ -163,6 +167,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     });
+  },
+  logout(token: string) {
+    return request<{ ok: true }>("/auth/logout", {
+      method: "POST",
+    }, token);
   },
   outlookLogin(input: {
     idToken: string;
@@ -203,7 +212,7 @@ export const api = {
       startCheckout?: boolean;
     },
   ) {
-    return request<{ request: RequestRecord; checkoutUrl?: string }>("/requests", {
+    return request<{ request: RequestRecord; checkoutUrl?: string; duplicate?: boolean }>("/requests", {
       method: "POST",
       body: JSON.stringify(input),
     }, token);
@@ -276,12 +285,17 @@ export const api = {
       token,
     );
   },
-  confirmCheckout(token: string, requestId: string, paymentState: "success" | "cancelled") {
+  confirmCheckout(
+    token: string,
+    requestId: string,
+    paymentState: "success" | "cancelled",
+    checkoutSessionId?: string,
+  ) {
     return request<{ request: RequestRecord }>(
       "/payments/confirm",
       {
         method: "POST",
-        body: JSON.stringify({ requestId, paymentState }),
+        body: JSON.stringify({ requestId, paymentState, checkoutSessionId }),
       },
       token,
     );
