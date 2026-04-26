@@ -3,10 +3,10 @@
 // Keeps campus-specific choices out of the request page so the UI stays easier to read.
 
 export const GET_MOBILE_URL = "https://get.cbord.com/albany/full/food_home.php";
-export const MIN_PAYMENT_OFFER = 4;
+export const MIN_PAYMENT_OFFER = 3.99;
 export const serviceTypes = [
-  { value: "food", label: "Food Delivery", suggestedPrice: "$5-10" },
-  { value: "ride", label: "Ride", suggestedPrice: "$5-15" },
+  { value: "food", label: "Food Delivery", suggestedPrice: "Auto by location" },
+  { value: "ride", label: "Ride", suggestedPrice: "$3.99 + optional tip" },
 ];
 
 export const housingLocations = [
@@ -129,7 +129,57 @@ export const housingLocations = [
     label: "Massry Center",
     buildings: ["Massry Center"],
   },
+  {
+    id: "lecture-center",
+    label: "Lecture Center",
+    buildings: Array.from({ length: 24 }, (_, index) => `LC ${index + 1}`),
+  },
 ];
+
+export const deliveryFeesByLocationId: Record<string, number> = {
+  state: 3.99,
+  indigenous: 3.99,
+  dutch: 3.99,
+  colonial: 3.99,
+  empire: 5.99,
+  freedom: 5.99,
+  liberty: 4.99,
+  library: 3.99,
+  "science-library": 4.99,
+  massry: 4.99,
+  "lecture-center": 3.99,
+};
+
+export function getDeliveryFeeForLocation(locationId: string) {
+  const fee = deliveryFeesByLocationId[locationId];
+  return Number.isFinite(fee) ? fee : null;
+}
+
+export function formatDeliveryFee(amount: number) {
+  return amount.toFixed(2);
+}
+
+export function parseOptionalTip(value: string) {
+  if (!value.trim()) {
+    return { ok: true, amount: 0 };
+  }
+
+  if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) {
+    return { ok: false, amount: 0 };
+  }
+
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { ok: false, amount: 0 };
+  }
+
+  return { ok: true, amount: Number(amount.toFixed(2)) };
+}
+
+export function formatPaymentTotal(basePayment: number, tipAmount: number) {
+  return (basePayment + tipAmount).toFixed(2);
+}
 
 export function getHelperCopy(serviceType: string) {
   if (serviceType === "food") {
@@ -191,6 +241,10 @@ export function getMeetSpotOptions(areaId: string, buildingLabel: string) {
 
   if (areaId === "library" || areaId === "science-library" || areaId === "massry") {
     return ["Front entrance", "Back entrance", "Main lobby"];
+  }
+
+  if (areaId === "lecture-center") {
+    return ["Meet outside classroom", "Main lobby", "Podium entrance"];
   }
 
   if (normalizedBuilding.includes("tower")) {

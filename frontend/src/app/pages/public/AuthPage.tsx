@@ -2,7 +2,7 @@
 // Combined login and signup screen.
 // Lets students log in or sign up for the side they already chose on the landing page.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus } from "lucide-react";
@@ -52,6 +52,7 @@ export function AuthPage() {
   const [ualbanyIdImage, setUalbanyIdImage] = useState("");
   const entryView = initialEntryView;
   const [busy, setBusy] = useState(false);
+  const authSubmitLockRef = useRef(false);
   const currentSideCopy = sideCopy[entryView];
 
   if (user) {
@@ -90,13 +91,14 @@ export function AuthPage() {
 
   async function handleSubmit(event?: FormEvent) {
     event?.preventDefault();
+    if (authSubmitLockRef.current) return;
+    authSubmitLockRef.current = true;
+    setBusy(true);
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedName = name.trim();
 
     try {
-      setBusy(true);
-
       if (mode === "login") {
         await login(normalizedEmail, password);
         setStoredView(entryView);
@@ -123,14 +125,17 @@ export function AuthPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Authentication failed.");
     } finally {
+      authSubmitLockRef.current = false;
       setBusy(false);
     }
   }
 
   async function handleMicrosoftLogin() {
-    try {
-      setBusy(true);
+    if (authSubmitLockRef.current) return;
+    authSubmitLockRef.current = true;
+    setBusy(true);
 
+    try {
       if (!isMicrosoftAuthConfigured) {
         throw new Error("Microsoft sign-in is not configured yet. Add the Azure client and tenant IDs in .env.local.");
       }
@@ -159,6 +164,7 @@ export function AuthPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Microsoft sign-in failed.");
     } finally {
+      authSubmitLockRef.current = false;
       setBusy(false);
     }
   }
@@ -205,10 +211,10 @@ export function AuthPage() {
         <Card className="order-1 border-[var(--border)] bg-white shadow-sm xl:order-2 xl:sticky xl:top-6">
           <CardHeader className="p-5 sm:p-6">
             <div className="grid grid-cols-2 gap-2">
-              <Button className="w-full" onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
+              <Button className="w-full" disabled={busy} onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
                 Log In
               </Button>
-              <Button className="w-full" onClick={() => setMode("signup")} variant={mode === "signup" ? "default" : "secondary"}>
+              <Button className="w-full" disabled={busy} onClick={() => setMode("signup")} variant={mode === "signup" ? "default" : "secondary"}>
                 Sign Up
               </Button>
             </div>
@@ -320,9 +326,6 @@ export function AuthPage() {
             <Button
               className="w-full"
               disabled={busy}
-              onClick={(event) => {
-                void handleSubmit(event as unknown as FormEvent);
-              }}
               size="lg"
               type="submit"
             >

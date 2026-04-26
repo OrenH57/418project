@@ -8,7 +8,18 @@ export const isMicrosoftAuthConfigured = Boolean(clientId && tenantId);
 
 export const microsoftLoginRequest = {
   scopes: ["openid", "profile", "email"],
+  prompt: "select_account",
 };
+
+export function clearMicrosoftAuthCache() {
+  for (const storage of [localStorage, sessionStorage]) {
+    for (const key of Object.keys(storage)) {
+      if (key.startsWith("msal.") || key.includes("login.windows.net") || key.includes("login.microsoftonline.com")) {
+        storage.removeItem(key);
+      }
+    }
+  }
+}
 
 export const msalInstance = new PublicClientApplication({
   auth: {

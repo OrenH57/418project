@@ -66,7 +66,7 @@ const howItWorks = [
   },
   {
     title: "Send the delivery request",
-    body: "Choose your drop-off area, add the screenshot, and set the delivery fee.",
+    body: "Choose your drop-off area, add the screenshot, and see the delivery fee.",
     icon: Sparkles,
   },
   {

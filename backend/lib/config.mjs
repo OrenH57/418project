@@ -28,7 +28,7 @@ export const ualbanyRestaurants = [
   "Yellas",
   "Zoca",
 ];
-export const MIN_PAYMENT_OFFER = 4;
+export const MIN_PAYMENT_OFFER = 3.99;
 export const DISCOUNT_RATE = 0.4;
 
 export async function loadEnv() {

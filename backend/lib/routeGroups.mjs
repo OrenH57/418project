@@ -2,6 +2,7 @@
 // Grouped backend route handlers to keep the server entrypoint focused on routing flow.
 
 import crypto from "node:crypto";
+import { buildPaymentTotal, formatPaymentAmount, getStoredPaymentBase, parseOptionalTip } from "./paymentPolicy.mjs";
 
 export async function handleMessagingRoute(context) {
   const {
@@ -438,6 +439,24 @@ export async function handlePaymentsRoute(context) {
     if (requestRecord.userId !== auth.user.id) {
       sendJson(response, 403, { error: "Only the requester can pay the delivery fee for this request." });
       return true;
+    }
+
+    if (requestRecord.paymentStatus !== "paid" && requestRecord.paymentStatus !== "pending" && "tipAmount" in body) {
+      const tipResult = parseOptionalTip(body.tipAmount);
+      if (!tipResult.ok) {
+        sendJson(response, 400, { error: tipResult.error });
+        return true;
+      }
+
+      const basePayment = getStoredPaymentBase(requestRecord);
+      if (!Number.isFinite(basePayment) || basePayment <= 0) {
+        sendJson(response, 400, { error: "Request payment amount is invalid." });
+        return true;
+      }
+
+      requestRecord.basePayment = basePayment;
+      requestRecord.tipAmount = tipResult.amount;
+      requestRecord.payment = formatPaymentAmount(buildPaymentTotal(basePayment, tipResult.amount));
     }
 
     const amountNumber = Math.round(Number.parseFloat(requestRecord.payment) * 100);

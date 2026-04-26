@@ -19,11 +19,15 @@ import {
   MIN_PAYMENT_OFFER,
   serviceTypes,
   housingLocations,
+  formatDeliveryFee,
+  formatPaymentTotal,
+  getDeliveryFeeForLocation,
   getHelperCopy,
   buildFoodNotes,
   buildHousingDestination,
   getFloorOptions,
   getMeetSpotOptions,
+  parseOptionalTip,
 } from "../../lib/campusConfig";
 import { openGetMobile } from "../../lib/getMobile";
 
@@ -39,6 +43,16 @@ type SectionCardProps = {
   description?: string;
   children: React.ReactNode;
 };
+
+const REQUEST_IDEMPOTENCY_KEY = "campus-connect-request-idempotency-key";
+
+function createRequestIdempotencyKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `request-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButtonProps) {
   return (
@@ -80,7 +94,6 @@ export function RequestService() {
   const typeFromUrl = searchParams.get("type") || "food";
   const pickupFromUrl = searchParams.get("pickup") || "";
   const destinationFromUrl = searchParams.get("destination") || "";
-  const paymentFromUrl = searchParams.get("payment") || "";
   const notesFromUrl = searchParams.get("notes") || "";
 
   const [serviceType, setServiceType] = useState(typeFromUrl);
@@ -88,7 +101,7 @@ export function RequestService() {
   const [destination, setDestination] = useState(destinationFromUrl);
   const [timeMode, setTimeMode] = useState<"now" | "schedule">("now");
   const [time, setTime] = useState("");
-  const [payment, setPayment] = useState(paymentFromUrl);
+  const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState(notesFromUrl);
   const [orderNumber, setOrderNumber] = useState("");
   const [orderItems, setOrderItems] = useState("");
@@ -104,6 +117,8 @@ export function RequestService() {
   const [rideDestinationArea, setRideDestinationArea] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
+  const idempotencyKeyRef = useRef("");
+  const bootstrapTokenRef = useRef("");
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
 
@@ -120,6 +135,19 @@ export function RequestService() {
     () => (selectedHousingArea && housingBuilding ? getMeetSpotOptions(selectedHousingArea.id, housingBuilding) : []),
     [housingBuilding, selectedHousingArea],
   );
+  const selectedDeliveryLocation = selectedHousingArea
+    ? (() => {
+      const fee = getDeliveryFeeForLocation(selectedHousingArea.id);
+      return fee === null
+        ? null
+        : {
+            id: selectedHousingArea.id,
+            label: selectedHousingArea.label,
+            fee,
+          };
+    })()
+    : null;
+  const selectedDeliveryFee = selectedDeliveryLocation?.fee ?? null;
   const housingDestination = useMemo(
     () =>
       selectedHousingArea
@@ -132,26 +160,36 @@ export function RequestService() {
     [housingBuilding, housingDetails, housingFloor, selectedHousingArea],
   );
   const estimatedRetailAmount = Number.parseFloat(estimatedRetailTotal);
-  const paymentAmount = Number.parseFloat(payment);
   const isFood = serviceType === "food";
   const isRide = serviceType === "ride";
   const isHousingDelivery = isFood;
   const hasOrderScreenshot = Boolean(orderScreenshot);
   const [hasOrderedInGet, setHasOrderedInGet] = useState(!isFood);
+  const parsedTip = parseOptionalTip(tipAmount);
+  const currentBasePayment = selectedDeliveryFee ?? MIN_PAYMENT_OFFER;
+  const currentTipAmount = parsedTip.ok ? parsedTip.amount : 0;
+  const currentPaymentTotal = formatPaymentTotal(currentBasePayment, currentTipAmount);
 
   useEffect(() => {
     setHasOrderedInGet(!isFood);
   }, [isFood]);
 
   useEffect(() => {
+    let isActive = true;
+
     async function loadBootstrap() {
       if (!token) return;
+      if (bootstrapTokenRef.current === token) return;
+
+      bootstrapTokenRef.current = token;
 
       const response = await api.bootstrap(token);
+      if (!isActive) return;
+
       setRestaurants(response.restaurants);
 
-      if (!pickupFromUrl && response.restaurants[0] && isFood) {
-        setPickup(response.restaurants[0]);
+      if (!pickupFromUrl && response.restaurants[0]) {
+        setPickup((currentPickup) => currentPickup || response.restaurants[0]);
       }
     }
 
@@ -161,12 +199,19 @@ export function RequestService() {
         setBootstrapError("");
         await loadBootstrap();
       } catch (error) {
+        bootstrapTokenRef.current = "";
+        if (!isActive) return;
         setBootstrapError(error instanceof Error ? error.message : "Could not load request setup.");
       } finally {
+        if (!isActive) return;
         setIsBootstrapping(false);
       }
     })();
-  }, [isFood, pickupFromUrl, token]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [pickupFromUrl, token]);
 
   useEffect(() => {
     if (serviceType !== "food" && serviceType !== "ride") {
@@ -193,6 +238,20 @@ export function RequestService() {
       setDestination(nextDestination);
     }
   }, [isRide, rideDestinationArea, ridePickupArea]);
+
+  useEffect(() => {
+    if (!isFood) {
+      return;
+    }
+
+    setTipAmount("");
+  }, [housingArea, isFood]);
+
+  function handleTipChange(value: string) {
+    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+      setTipAmount(value);
+    }
+  }
 
   async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -228,39 +287,58 @@ export function RequestService() {
     event.preventDefault();
     if (!token) return;
     if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
+    const stopSubmit = (message: string) => {
+      submitLockRef.current = false;
+      toast.error(message);
+    };
 
     const finalTime = timeMode === "now" ? "Now" : time.trim();
     const trimmedDestination = destination.trim();
 
-    if (!serviceType || !pickup || !payment || (needsDestination && !trimmedDestination)) {
-      toast.error("Please fill in all required fields");
+    if (!serviceType || !pickup || (needsDestination && !trimmedDestination)) {
+      stopSubmit("Please fill in all required fields");
       return;
     }
 
     if (timeMode === "schedule" && !finalTime) {
-      toast.error("Choose the date and time if you want to schedule this for later.");
+      stopSubmit("Choose the date and time if you want to schedule this for later.");
       return;
     }
 
     if (serviceType === "food" && !hasOrderScreenshot && (!orderNumber.trim() || !orderItems.trim())) {
-      toast.error("Add the GET Mobile order number and item summary, or upload the GET confirmation screenshot.");
+      stopSubmit("Add the GET Mobile order number and item summary, or upload the GET confirmation screenshot.");
       return;
     }
 
     if (serviceType === "food" && !housingArea) {
-      toast.error("Choose the residential area for delivery.");
+      stopSubmit("Choose the delivery location so CampusConnect can calculate the fee.");
+      return;
+    }
+
+    if (serviceType === "food" && !selectedDeliveryLocation) {
+      stopSubmit("Delivery pricing is not available for that location yet.");
+      return;
+    }
+
+    const tipValidation = parseOptionalTip(tipAmount);
+    if (!tipValidation.ok) {
+      stopSubmit("Tips can use dollars and cents, up to two decimal places.");
       return;
     }
 
     if (serviceType === "food" && !hasOrderedInGet) {
-      toast.error("Order in GET first, then come back here to request delivery.");
+      stopSubmit("Order in GET first, then come back here to request delivery.");
       return;
     }
 
-    if (!Number.isFinite(paymentAmount) || paymentAmount < MIN_PAYMENT_OFFER) {
-      toast.error(`Payment offers must be at least $${MIN_PAYMENT_OFFER}.`);
+    const basePayment = serviceType === "food" ? selectedDeliveryLocation?.fee : MIN_PAYMENT_OFFER;
+    if (!Number.isFinite(basePayment) || !basePayment || basePayment < MIN_PAYMENT_OFFER) {
+      stopSubmit("Delivery fee is missing for this request.");
       return;
     }
+    const finalPayment = formatPaymentTotal(basePayment, tipValidation.amount);
 
     const requestNotes =
       serviceType === "food"
@@ -268,18 +346,27 @@ export function RequestService() {
           ? [notes.trim() ? `Extra notes: ${notes.trim()}` : "", "GET order screenshot uploaded."]
               .filter(Boolean)
               .join("\n")
-          : buildFoodNotes(orderNumber, orderItems, notes)
+        : buildFoodNotes(orderNumber, orderItems, notes)
         : notes.trim();
+    const idempotencyKey =
+      idempotencyKeyRef.current ||
+      sessionStorage.getItem(REQUEST_IDEMPOTENCY_KEY) ||
+      createRequestIdempotencyKey();
+    idempotencyKeyRef.current = idempotencyKey;
+    sessionStorage.setItem(REQUEST_IDEMPOTENCY_KEY, idempotencyKey);
 
     try {
-      submitLockRef.current = true;
       setIsSubmitting(true);
       const response = await api.createRequest(token, {
         serviceType,
         pickup,
         destination: trimmedDestination,
+        deliveryLocationId: isFood ? housingArea : undefined,
+        deliveryLocationLabel: isFood ? selectedHousingArea?.label : undefined,
         time: finalTime,
-        payment,
+        payment: finalPayment,
+        tipAmount: tipValidation.amount,
+        idempotencyKey,
         notes: requestNotes,
         orderEta: orderEta.trim(),
         orderScreenshot,
@@ -288,10 +375,14 @@ export function RequestService() {
       });
 
       if (response.checkoutUrl) {
+        sessionStorage.removeItem(REQUEST_IDEMPOTENCY_KEY);
+        idempotencyKeyRef.current = "";
         window.location.href = response.checkoutUrl;
         return;
       }
 
+      sessionStorage.removeItem(REQUEST_IDEMPOTENCY_KEY);
+      idempotencyKeyRef.current = "";
       toast.success("Order placed successfully!");
       window.setTimeout(() => navigate(`/messages/${response.request.id}`), 700);
     } catch (error) {
@@ -648,7 +739,7 @@ export function RequestService() {
                 </div>
               ) : null}
 
-              <SectionCard description="Set the time and what you will pay." title="4. Finish request">
+              <SectionCard description={isFood ? "Set the time and review the delivery charge." : "Set the time and optional tip."} title="4. Finish request">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>When do you need it?</Label>
@@ -685,23 +776,64 @@ export function RequestService() {
                     )}
                   </div>
 
+                  {isFood ? (
+                    <div>
+                      <Label>Delivery fee</Label>
+                      <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm text-[var(--muted)]">
+                            {selectedHousingArea ? `Based on ${selectedHousingArea.label}` : "Choose a delivery area first"}
+                            </p>
+                          </div>
+                          <p className="text-2xl font-semibold text-[var(--ink)]">
+                            {selectedDeliveryFee === null ? "--" : `$${formatDeliveryFee(selectedDeliveryFee)}`}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        This is the location-based delivery charge before any optional tip.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label>Delivery fee</Label>
+                      <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm text-[var(--muted)]">Fixed minimum offer</p>
+                          <p className="text-2xl font-semibold text-[var(--ink)]">${formatDeliveryFee(MIN_PAYMENT_OFFER)}</p>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        This is the only base price for the job. Add a tip below if you want.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                   <div>
-                    <Label htmlFor="payment">Delivery fee you will pay *</Label>
+                    <Label htmlFor="tip">Optional tip</Label>
                     <div className="relative">
                       <DollarSign className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
                       <Input
                         className="pl-10"
-                        id="payment"
-                        min={MIN_PAYMENT_OFFER}
-                        onChange={(event) => setPayment(event.target.value)}
-                        placeholder="Minimum $4"
-                        step="1"
+                        id="tip"
+                        inputMode="decimal"
+                        min={0}
+                        onChange={(event) => handleTipChange(event.target.value)}
+                        placeholder="0"
+                        step="0.50"
                         type="number"
-                        value={payment}
+                        value={tipAmount}
                       />
                     </div>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      This is what the courier earns for the job. Minimum offer: $4.
+                    <p className="mt-1 text-sm text-[var(--muted)]">Tips are optional and can include cents.</p>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm">
+                    <p className="text-[var(--muted)]">Total payment</p>
+                    <p className="mt-1 text-xl font-semibold text-[var(--brand-accent)]">
+                      {isFood && selectedDeliveryFee === null ? "--" : `$${currentPaymentTotal}`}
                     </p>
                   </div>
                 </div>

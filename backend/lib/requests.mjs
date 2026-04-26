@@ -1,6 +1,44 @@
 // File purpose:
 // Request and message formatting helpers shared across backend routes.
 
+export const ACTIVE_REQUEST_STATUSES = ["open", "accepted"];
+export const ORDER_TIMEOUT_MS = 60 * 60 * 1000;
+
+export function isActiveRequestStatus(status) {
+  return ACTIVE_REQUEST_STATUSES.includes(status);
+}
+
+export function isClosedRequestStatus(status) {
+  return ["completed", "cancelled", "expired"].includes(status);
+}
+
+export function expireTimedOutRequests(data, now = new Date()) {
+  let changed = false;
+  const nowMs = now.getTime();
+
+  for (const request of data.requests || []) {
+    if (request.status !== "open") continue;
+
+    const createdAtMs = new Date(request.createdAt).getTime();
+    if (!Number.isFinite(createdAtMs) || nowMs - createdAtMs < ORDER_TIMEOUT_MS) continue;
+
+    request.status = "expired";
+    request.expiredAt = now.toISOString();
+    request.closedBy = "system";
+    data.messages[request.id] = data.messages[request.id] || [];
+    data.messages[request.id].push({
+      id: `message-timeout-${request.id}`,
+      senderId: "system",
+      senderName: "CampusConnect",
+      text: "This request timed out because no courier accepted it within 60 minutes.",
+      createdAt: now.toISOString(),
+    });
+    changed = true;
+  }
+
+  return changed;
+}
+
 export function formatRelativeTime(iso) {
   const diffMinutes = Math.max(
     1,
@@ -39,26 +77,63 @@ export function normalizeRequestField(value) {
 
 export function findRecentDuplicateRequest(requests, candidate) {
   const duplicateWindowMs = 10 * 60 * 1000;
-  const candidateCreatedAt = Date.now();
+  const candidateCreatedAt = new Date(candidate.createdAt).getTime();
+  const effectiveCandidateCreatedAt = Number.isFinite(candidateCreatedAt) ? candidateCreatedAt : Date.now();
 
   return requests.find((entry) => {
     if (entry.userId !== candidate.userId) return false;
-    if (entry.status !== "open" && entry.status !== "accepted") return false;
+    if (!isActiveRequestStatus(entry.status)) return false;
 
     const entryCreatedAt = new Date(entry.createdAt).getTime();
-    if (!Number.isFinite(entryCreatedAt) || candidateCreatedAt - entryCreatedAt > duplicateWindowMs) {
+    if (!Number.isFinite(entryCreatedAt) || effectiveCandidateCreatedAt - entryCreatedAt > duplicateWindowMs) {
       return false;
     }
+
+    const samePayment =
+      normalizeRequestField(candidate.serviceType) === "food"
+        ? true
+        : normalizeRequestField(entry.payment) === normalizeRequestField(candidate.payment);
 
     return (
       normalizeRequestField(entry.serviceType) === normalizeRequestField(candidate.serviceType) &&
       normalizeRequestField(entry.pickup) === normalizeRequestField(candidate.pickup) &&
       normalizeRequestField(entry.destination) === normalizeRequestField(candidate.destination) &&
+      normalizeRequestField(entry.deliveryLocationId) === normalizeRequestField(candidate.deliveryLocationId) &&
       normalizeRequestField(entry.time) === normalizeRequestField(candidate.time) &&
-      normalizeRequestField(entry.payment) === normalizeRequestField(candidate.payment) &&
+      samePayment &&
       normalizeRequestField(entry.notes) === normalizeRequestField(candidate.notes) &&
       normalizeRequestField(entry.orderEta) === normalizeRequestField(candidate.orderEta) &&
       normalizeRequestField(entry.orderScreenshot) === normalizeRequestField(candidate.orderScreenshot)
+    );
+  });
+}
+
+export function findRecentSimilarSubmission(requests, candidate) {
+  const duplicateWindowMs = 30 * 1000;
+  const candidateCreatedAt = new Date(candidate.createdAt).getTime();
+  const effectiveCandidateCreatedAt = Number.isFinite(candidateCreatedAt) ? candidateCreatedAt : Date.now();
+
+  return requests.find((entry) => {
+    if (entry.userId !== candidate.userId) return false;
+    if (!isActiveRequestStatus(entry.status)) return false;
+
+    const entryCreatedAt = new Date(entry.createdAt).getTime();
+    if (!Number.isFinite(entryCreatedAt)) return false;
+    const ageMs = effectiveCandidateCreatedAt - entryCreatedAt;
+    if (ageMs < 0 || ageMs > duplicateWindowMs) return false;
+
+    const samePayment =
+      normalizeRequestField(candidate.serviceType) === "food"
+        ? true
+        : normalizeRequestField(entry.payment) === normalizeRequestField(candidate.payment);
+
+    return (
+      normalizeRequestField(entry.serviceType) === normalizeRequestField(candidate.serviceType) &&
+      normalizeRequestField(entry.pickup) === normalizeRequestField(candidate.pickup) &&
+      normalizeRequestField(entry.destination) === normalizeRequestField(candidate.destination) &&
+      normalizeRequestField(entry.deliveryLocationId) === normalizeRequestField(candidate.deliveryLocationId) &&
+      normalizeRequestField(entry.time) === normalizeRequestField(candidate.time) &&
+      samePayment
     );
   });
 }

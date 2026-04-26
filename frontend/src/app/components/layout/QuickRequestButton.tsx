@@ -3,7 +3,7 @@
 // Gives users a lightweight way to jump into the request form from most pages.
 
 import { Plus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -20,19 +20,35 @@ export function QuickRequestButton() {
   const [restaurants, setRestaurants] = useState<string[]>([]);
   const navigate = useNavigate();
   const { token } = useAuth();
+  const bootstrapTokenRef = useRef("");
 
   useEffect(() => {
+    let isActive = true;
+
     async function loadBootstrap() {
       if (!token) return;
-      const response = await api.bootstrap(token);
-      setRestaurants(response.restaurants);
-      if (!pickup && response.restaurants[0]) {
-        setPickup(response.restaurants[0]);
+      if (bootstrapTokenRef.current === token) return;
+      bootstrapTokenRef.current = token;
+
+      let response;
+      try {
+        response = await api.bootstrap(token);
+      } catch {
+        bootstrapTokenRef.current = "";
+        return;
       }
+      if (!isActive) return;
+
+      setRestaurants(response.restaurants);
+      setPickup((currentPickup) => currentPickup || response.restaurants[0] || "");
     }
 
     void loadBootstrap();
-  }, [pickup, token]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
 
   const handleFullForm = () => {
     setIsOpen(false);

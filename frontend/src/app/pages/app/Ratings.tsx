@@ -2,7 +2,7 @@
 // Ratings page for viewing and leaving review feedback.
 // Loads the real request participant, persists the rating, and prevents blind ratings.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Star } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -22,6 +22,7 @@ export function Ratings() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [canRate, setCanRate] = useState(false);
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     async function loadRatingSummary() {
@@ -51,6 +52,8 @@ export function Ratings() {
 
   async function handleSubmit() {
     if (!token || !requestId || !canRate) return;
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
 
     try {
       setSubmitting(true);
@@ -63,6 +66,7 @@ export function Ratings() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save your rating.");
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   }

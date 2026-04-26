@@ -2,7 +2,7 @@
 // Live admin moderation page for the prototype.
 // Lets campus admins review flagged requests, remove unsafe listings, and suspend repeat offenders.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChartNoAxesColumn, Shield, Trash2, UserX } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -16,11 +16,13 @@ function RequestModerationCard({
   onFlag,
   onRemove,
   onClear,
+  disabled = false,
 }: {
   request: RequestRecord;
   onFlag: (request: RequestRecord) => void;
   onRemove: (request: RequestRecord) => void;
   onClear: (request: RequestRecord) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
@@ -48,19 +50,19 @@ function RequestModerationCard({
 
         <div className="flex flex-wrap gap-2">
           {request.moderationStatus !== "flagged" ? (
-            <Button onClick={() => onFlag(request)} size="sm" variant="secondary">
+            <Button disabled={disabled} onClick={() => onFlag(request)} size="sm" variant="secondary">
               <AlertTriangle className="mr-2 h-4 w-4" />
               Flag
             </Button>
           ) : null}
           {request.moderationStatus !== "removed" ? (
-            <Button onClick={() => onRemove(request)} size="sm">
+            <Button disabled={disabled} onClick={() => onRemove(request)} size="sm">
               <Trash2 className="mr-2 h-4 w-4" />
               Remove
             </Button>
           ) : null}
           {request.moderationStatus !== "clear" ? (
-            <Button onClick={() => onClear(request)} size="sm" variant="outline">
+            <Button disabled={disabled} onClick={() => onClear(request)} size="sm" variant="outline">
               Clear
             </Button>
           ) : null}
@@ -73,9 +75,11 @@ function RequestModerationCard({
 function SuspensionCard({
   user,
   onSuspend,
+  disabled = false,
 }: {
   user: User;
   onSuspend: (user: User) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -90,7 +94,7 @@ function SuspensionCard({
           <p className="mt-2 text-sm text-amber-900">Reason: {user.suspendedReason}</p>
         ) : null}
       </div>
-      <Button onClick={() => onSuspend(user)} size="sm" variant={user.suspended ? "outline" : "secondary"}>
+      <Button disabled={disabled} onClick={() => onSuspend(user)} size="sm" variant={user.suspended ? "outline" : "secondary"}>
         <UserX className="mr-2 h-4 w-4" />
         {user.suspended ? "Unsuspend" : "Suspend"}
       </Button>
@@ -103,6 +107,8 @@ export function AdminDashboard() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionLockKey, setActionLockKey] = useState("");
+  const actionLockRef = useRef("");
 
   async function loadOverview() {
     if (!token) return;
@@ -125,6 +131,10 @@ export function AdminDashboard() {
 
   async function handleModeration(request: RequestRecord, action: "flag" | "remove" | "clear") {
     if (!token) return;
+    const actionKey = `moderation:${request.id}:${action}`;
+    if (actionLockRef.current) return;
+    actionLockRef.current = actionKey;
+    setActionLockKey(actionKey);
 
     const reason =
       action === "flag"
@@ -134,6 +144,8 @@ export function AdminDashboard() {
           : "";
 
     if ((action === "flag" || action === "remove") && reason === null) {
+      actionLockRef.current = "";
+      setActionLockKey("");
       return;
     }
 
@@ -146,11 +158,18 @@ export function AdminDashboard() {
       await loadOverview();
     } catch (moderationError) {
       toast.error(moderationError instanceof Error ? moderationError.message : "Moderation action failed.");
+    } finally {
+      actionLockRef.current = "";
+      setActionLockKey("");
     }
   }
 
   async function handleSuspension(targetUser: User) {
     if (!token) return;
+    const actionKey = `suspension:${targetUser.id}`;
+    if (actionLockRef.current) return;
+    actionLockRef.current = actionKey;
+    setActionLockKey(actionKey);
 
     const nextSuspended = !targetUser.suspended;
     const reason = nextSuspended
@@ -158,6 +177,8 @@ export function AdminDashboard() {
       : "";
 
     if (nextSuspended && reason === null) {
+      actionLockRef.current = "";
+      setActionLockKey("");
       return;
     }
 
@@ -170,6 +191,9 @@ export function AdminDashboard() {
       await loadOverview();
     } catch (suspensionError) {
       toast.error(suspensionError instanceof Error ? suspensionError.message : "Suspension update failed.");
+    } finally {
+      actionLockRef.current = "";
+      setActionLockKey("");
     }
   }
 
@@ -233,6 +257,7 @@ export function AdminDashboard() {
               {!isLoading && overview?.flaggedRequests.length ? (
                 overview.flaggedRequests.map((request) => (
                   <RequestModerationCard
+                    disabled={Boolean(actionLockKey)}
                     key={request.id}
                     onClear={(entry) => void handleModeration(entry, "clear")}
                     onFlag={(entry) => void handleModeration(entry, "flag")}
@@ -259,7 +284,12 @@ export function AdminDashboard() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {overview?.users.filter((entry) => entry.role !== "admin").map((entry) => (
-                  <SuspensionCard key={entry.id} onSuspend={(target) => void handleSuspension(target)} user={entry} />
+                  <SuspensionCard
+                    disabled={Boolean(actionLockKey)}
+                    key={entry.id}
+                    onSuspend={(target) => void handleSuspension(target)}
+                    user={entry}
+                  />
                 ))}
               </CardContent>
             </Card>
@@ -286,6 +316,7 @@ export function AdminDashboard() {
                 {overview?.moderatedRequests.length ? (
                   overview.moderatedRequests.map((request) => (
                     <RequestModerationCard
+                      disabled={Boolean(actionLockKey)}
                       key={request.id}
                       onClear={(entry) => void handleModeration(entry, "clear")}
                       onFlag={(entry) => void handleModeration(entry, "flag")}

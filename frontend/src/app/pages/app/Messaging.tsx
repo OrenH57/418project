@@ -4,15 +4,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Send, Phone, Shield, CreditCard, BellRing, CheckCircle2, Clock3 } from "lucide-react";
+import { ArrowLeft, Send, Phone, Shield, CreditCard, BellRing, CheckCircle2, Clock3, XCircle, DollarSign } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { api, type MessageRecord, type RequestRecord } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
+import { formatPaymentTotal, parseOptionalTip } from "../../lib/campusConfig";
 
 export function Messaging() {
   const navigate = useNavigate();
@@ -26,7 +28,16 @@ export function Messaging() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [tipAmount, setTipAmount] = useState("");
+  const [isMarkingFoodReady, setIsMarkingFoodReady] = useState(false);
+  const [isCompletingRequest, setIsCompletingRequest] = useState(false);
+  const [isCancellingRequest, setIsCancellingRequest] = useState(false);
   const hasProcessedPaymentRedirect = useRef(false);
+  const sendLockRef = useRef(false);
+  const checkoutLockRef = useRef(false);
+  const markFoodReadyLockRef = useRef(false);
+  const completeRequestLockRef = useRef(false);
+  const cancelRequestLockRef = useRef(false);
 
   const title = useMemo(() => {
     if (!requestRecord) return `Request #${requestId ?? "unknown"}`;
@@ -56,6 +67,12 @@ export function Messaging() {
   }, [requestId, token]);
 
   useEffect(() => {
+    if (typeof requestRecord?.tipAmount === "number" && Number.isFinite(requestRecord.tipAmount)) {
+      setTipAmount(requestRecord.tipAmount > 0 ? String(requestRecord.tipAmount) : "");
+    }
+  }, [requestRecord?.id, requestRecord?.tipAmount]);
+
+  useEffect(() => {
     if (!token || !requestId || hasProcessedPaymentRedirect.current) return;
 
     const paymentState = searchParams.get("payment");
@@ -83,6 +100,8 @@ export function Messaging() {
 
   async function handleSend() {
     if (!token || !requestId || !draft.trim()) return;
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
 
     try {
       setIsSending(true);
@@ -92,37 +111,106 @@ export function Messaging() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not send message.");
     } finally {
+      sendLockRef.current = false;
       setIsSending(false);
     }
   }
 
   async function handleCheckout() {
     if (!token || !requestId) return;
+    if (checkoutLockRef.current) return;
+    const tipValidation = parseOptionalTip(tipAmount);
+    if (!tipValidation.ok) {
+      toast.error("Tips can use dollars and cents, up to two decimal places.");
+      return;
+    }
+    checkoutLockRef.current = true;
 
     try {
       setIsCreatingCheckout(true);
-      const response = await api.createCheckoutSession(token, requestId);
+      const response = await api.createCheckoutSession(token, requestId, tipValidation.amount);
       window.location.href = response.url;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not start checkout.");
+      checkoutLockRef.current = false;
       setIsCreatingCheckout(false);
+    }
+  }
+
+  function handleTipChange(value: string) {
+    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+      setTipAmount(value);
     }
   }
 
   async function handleMarkFoodReady() {
     if (!token || !requestId) return;
+    if (markFoodReadyLockRef.current) return;
+    markFoodReadyLockRef.current = true;
 
     try {
+      setIsMarkingFoodReady(true);
       await api.markFoodReady(token, requestId);
       toast.success("Courier notified that the food is ready.");
       await loadMessages();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update the order status.");
+    } finally {
+      markFoodReadyLockRef.current = false;
+      setIsMarkingFoodReady(false);
+    }
+  }
+
+  async function handleCompleteRequest() {
+    if (!token || !requestId) return;
+    if (completeRequestLockRef.current) return;
+    completeRequestLockRef.current = true;
+
+    try {
+      setIsCompletingRequest(true);
+      await api.completeRequest(token, requestId);
+      toast.success("Order marked complete.");
+      await loadMessages();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not complete this order.");
+    } finally {
+      completeRequestLockRef.current = false;
+      setIsCompletingRequest(false);
+    }
+  }
+
+  async function handleCancelRequest() {
+    if (!token || !requestId) return;
+    if (cancelRequestLockRef.current) return;
+
+    const confirmed = window.confirm("Cancel this order? This will close it for everyone.");
+    if (!confirmed) return;
+
+    cancelRequestLockRef.current = true;
+    try {
+      setIsCancellingRequest(true);
+      await api.cancelRequest(token, requestId);
+      toast.success("Order cancelled.");
+      await loadMessages();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not cancel this order.");
+    } finally {
+      cancelRequestLockRef.current = false;
+      setIsCancellingRequest(false);
     }
   }
 
   const isRequester = Boolean(user && requestRecord && user.id === requestRecord.userId);
-  const canMarkFoodReady = Boolean(requestRecord?.serviceType === "food" && isRequester && !requestRecord.foodReady);
+  const isAssignedCourier = Boolean(user && requestRecord?.acceptedBy === user.id);
+  const isClosed = Boolean(
+    requestRecord?.status === "completed" || requestRecord?.status === "cancelled" || requestRecord?.status === "expired",
+  );
+  const isActiveRequest = Boolean(requestRecord?.status === "open" || requestRecord?.status === "accepted");
+  const canMarkFoodReady = Boolean(
+    requestRecord?.serviceType === "food" && isRequester && isActiveRequest && !requestRecord.foodReady,
+  );
+  const canCompleteRequest = Boolean(requestRecord?.status === "accepted" && (isRequester || isAssignedCourier));
+  const canCancelRequest = Boolean(requestRecord && isRequester && isActiveRequest);
   const courierEarnings =
     requestRecord?.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
       ? requestRecord.runnerEarnings
@@ -137,6 +225,16 @@ export function Messaging() {
   const paymentStatus = requestRecord?.paymentStatus || "unpaid";
   const paymentLabel =
     paymentStatus === "paid" ? "Paid in Stripe" : paymentStatus === "pending" ? "Stripe checkout started" : "Not paid yet";
+  const statusLabel =
+    requestRecord?.status === "completed"
+      ? "Completed"
+      : requestRecord?.status === "cancelled"
+        ? "Cancelled"
+        : requestRecord?.status === "expired"
+          ? "Timed out"
+          : requestRecord?.status === "accepted"
+            ? "Accepted"
+            : "Open";
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -171,7 +269,11 @@ export function Messaging() {
                   <Badge variant="outline">{otherParticipantRole}</Badge>
                 </div>
                 <p className="text-sm text-[var(--muted)]">
-                  {requestRecord?.status === "accepted" ? "Active handoff in progress" : "Waiting for match"}
+                  {requestRecord?.status === "accepted"
+                    ? "Active handoff in progress"
+                    : isClosed
+                      ? "This order is closed"
+                      : "Waiting for match"}
                 </p>
                 <p className="text-sm text-[var(--muted)]">
                   Phone: {isRequester ? "--" : requestRecord?.requesterPhone || "--"}
@@ -211,10 +313,64 @@ export function Messaging() {
                     : "Use the button below as soon as you get the GET email so the courier does not wait around."}
                 </p>
                 {canMarkFoodReady ? (
-                  <Button className="mt-3 w-full" onClick={() => void handleMarkFoodReady()} size="sm">
+                  <Button
+                    className="mt-3 w-full"
+                    disabled={isMarkingFoodReady}
+                    onClick={() => void handleMarkFoodReady()}
+                    size="sm"
+                  >
                     <BellRing className="mr-2 h-4 w-4" />
-                    I got the ready email
+                    {isMarkingFoodReady ? "Notifying courier..." : "I got the ready email"}
                   </Button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {requestRecord ? (
+              <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--ink)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Order status</p>
+                    <p className="mt-1 text-[var(--muted)]">
+                      {requestRecord.status === "completed"
+                        ? "This order is complete and no longer appears as an active job."
+                        : requestRecord.status === "cancelled"
+                          ? "The requester cancelled this order."
+                          : requestRecord.status === "expired"
+                            ? "This order timed out before a courier accepted it."
+                            : requestRecord.status === "accepted"
+                              ? "Complete the order after the handoff is done."
+                              : "Cancel if you no longer need this order fulfilled."}
+                    </p>
+                  </div>
+                  <Badge variant={isClosed ? "secondary" : "outline"}>{statusLabel}</Badge>
+                </div>
+                {canCompleteRequest || canCancelRequest ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {canCompleteRequest ? (
+                      <Button
+                        className="w-full"
+                        disabled={isCompletingRequest || isCancellingRequest}
+                        onClick={() => void handleCompleteRequest()}
+                        size="sm"
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        {isCompletingRequest ? "Completing..." : "Mark Complete"}
+                      </Button>
+                    ) : null}
+                    {canCancelRequest ? (
+                      <Button
+                        className="w-full"
+                        disabled={isCancellingRequest || isCompletingRequest}
+                        onClick={() => void handleCancelRequest()}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" />
+                        {isCancellingRequest ? "Cancelling..." : "Cancel Order"}
+                      </Button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -275,15 +431,46 @@ export function Messaging() {
               ) : null}
             </div>
 
-            {isRequester && requestRecord?.serviceType !== "food" ? (
-              <Button
-                className="w-full"
-                disabled={paymentStatus === "paid" || isCreatingCheckout}
-                onClick={() => void handleCheckout()}
-              >
-                <CreditCard className="mr-2 h-4 w-4" />
-                {paymentStatus === "paid" ? "Delivery Fee Paid" : isCreatingCheckout ? "Opening Stripe..." : "Pay Delivery Fee"}
-              </Button>
+            {isRequester && isActiveRequest && requestRecord?.serviceType !== "food" ? (
+              <div className="space-y-3 rounded-xl border border-[var(--border)] bg-white p-4">
+                <div>
+                  <Label htmlFor="chat-tip">Optional tip</Label>
+                  <div className="relative mt-1">
+                    <DollarSign className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+                    <Input
+                      className="pl-10"
+                      disabled={paymentStatus === "paid" || paymentStatus === "pending" || isCreatingCheckout}
+                      id="chat-tip"
+                      inputMode="decimal"
+                      min={0}
+                      onChange={(event) => handleTipChange(event.target.value)}
+                      placeholder="0"
+                      step="0.50"
+                      type="number"
+                      value={tipAmount}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Tips can include cents. Total at checkout: $
+                    {requestRecord
+                      ? formatPaymentTotal(
+                          typeof requestRecord.basePayment === "number"
+                            ? requestRecord.basePayment
+                            : Number.parseFloat(requestRecord.payment || "0") - (requestRecord.tipAmount || 0),
+                          parseOptionalTip(tipAmount).ok ? parseOptionalTip(tipAmount).amount : 0,
+                        )
+                      : "--"}
+                  </p>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={paymentStatus === "paid" || isCreatingCheckout}
+                  onClick={() => void handleCheckout()}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  {paymentStatus === "paid" ? "Delivery Fee Paid" : isCreatingCheckout ? "Opening Stripe..." : "Pay Delivery Fee"}
+                </Button>
+              </div>
             ) : null}
 
             <Button className="w-full" onClick={() => navigate(`/rate/${requestId ?? "1"}`)} variant="secondary">

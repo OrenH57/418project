@@ -37,7 +37,9 @@ export function DriverFeed() {
   const [filterType, setFilterType] = useState("all");
   const [sortBy, setSortBy] = useState("time");
   const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [acceptingRequestId, setAcceptingRequestId] = useState("");
   const knownOpenRequestIds = useRef<string[]>([]);
+  const acceptingRequestRef = useRef("");
 
   useEffect(() => {
     if (preferredView === "requester") {
@@ -57,7 +59,7 @@ export function DriverFeed() {
     }
 
     void loadRequests();
-  }, [navigate, preferredView, token, user]);
+  }, [navigate, preferredView, token]);
 
   useEffect(() => {
     if (!token || preferredView !== "courier" || !user?.courierOnline) {
@@ -94,7 +96,7 @@ export function DriverFeed() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [preferredView, token, user]);
+  }, [preferredView, token, user?.courierOnline, user?.notificationsEnabled]);
 
   const filteredRequests = useMemo(() => {
     return [...requests]
@@ -133,8 +135,11 @@ export function DriverFeed() {
 
   async function handleAccept(requestId: string) {
     if (!token) return;
+    if (acceptingRequestRef.current) return;
+    acceptingRequestRef.current = requestId;
 
     try {
+      setAcceptingRequestId(requestId);
       await api.acceptRequest(token, requestId);
       const refreshed = await api.getRequests(token, "courier");
       setRequests(refreshed.requests);
@@ -142,6 +147,9 @@ export function DriverFeed() {
       navigate(`/messages/${requestId}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not accept request.");
+    } finally {
+      acceptingRequestRef.current = "";
+      setAcceptingRequestId("");
     }
   }
 
@@ -332,8 +340,12 @@ export function DriverFeed() {
                         Open Chat
                       </Button>
                     ) : (
-                      <Button className="shrink-0" onClick={() => void handleAccept(request.id)}>
-                        Accept Job
+                      <Button
+                        className="shrink-0"
+                        disabled={Boolean(acceptingRequestId)}
+                        onClick={() => void handleAccept(request.id)}
+                      >
+                        {acceptingRequestId === request.id ? "Accepting..." : "Accept Job"}
                       </Button>
                     )}
                   </div>

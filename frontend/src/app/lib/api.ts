@@ -33,8 +33,12 @@ export type RequestRecord = {
   serviceType: string;
   pickup: string;
   destination: string;
+  deliveryLocationId?: string;
+  deliveryLocationLabel?: string;
   time: string;
   payment: string;
+  basePayment?: number;
+  tipAmount?: number;
   notes: string;
   status: string;
   acceptedBy: string | null;
@@ -43,6 +47,10 @@ export type RequestRecord = {
   orderEta?: string;
   foodReady?: boolean;
   foodReadyAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  expiredAt?: string;
+  closedBy?: string;
   orderScreenshot?: string;
   estimatedRetailTotal?: number;
   estimatedDiscountCost?: number;
@@ -109,6 +117,12 @@ export type CampusSnapshot = {
   }>;
 };
 
+export type DeliveryLocationPrice = {
+  id: string;
+  label: string;
+  fee: number;
+};
+
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   let response: Response;
   try {
@@ -140,7 +154,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
         ? payload.error
         : "Request failed.";
     if (response.status === 401 && token) {
-      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { message: errorMessage } }));
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { message: errorMessage, token } }));
     }
     throw new Error(errorMessage);
   }
@@ -188,7 +202,13 @@ export const api = {
     return request<{ user: User }>("/session", {}, token);
   },
   bootstrap(token: string) {
-    return request<{ user: User; restaurants: string[]; requests: RequestRecord[]; campusSnapshot: CampusSnapshot }>(
+    return request<{
+      user: User;
+      restaurants: string[];
+      deliveryLocations: DeliveryLocationPrice[];
+      requests: RequestRecord[];
+      campusSnapshot: CampusSnapshot;
+    }>(
       "/bootstrap",
       {},
       token,
@@ -203,8 +223,12 @@ export const api = {
       serviceType: string;
       pickup: string;
       destination: string;
+      deliveryLocationId?: string;
+      deliveryLocationLabel?: string;
       time: string;
       payment: string;
+      tipAmount?: number;
+      idempotencyKey?: string;
       notes: string;
       orderEta?: string;
       orderScreenshot?: string;
@@ -233,6 +257,16 @@ export const api = {
   },
   markFoodReady(token: string, requestId: string) {
     return request<{ request: RequestRecord }>(`/requests/${requestId}/ready`, {
+      method: "POST",
+    }, token);
+  },
+  completeRequest(token: string, requestId: string) {
+    return request<{ request: RequestRecord }>(`/requests/${requestId}/complete`, {
+      method: "POST",
+    }, token);
+  },
+  cancelRequest(token: string, requestId: string) {
+    return request<{ request: RequestRecord }>(`/requests/${requestId}/cancel`, {
       method: "POST",
     }, token);
   },
@@ -275,12 +309,12 @@ export const api = {
       token,
     );
   },
-  createCheckoutSession(token: string, requestId: string) {
+  createCheckoutSession(token: string, requestId: string, tipAmount?: number) {
     return request<{ url: string }>(
       "/payments/create-checkout-session",
       {
         method: "POST",
-        body: JSON.stringify({ requestId }),
+        body: JSON.stringify({ requestId, ...(tipAmount === undefined ? {} : { tipAmount }) }),
       },
       token,
     );
