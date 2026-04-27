@@ -1348,6 +1348,20 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (requestRecord.paymentStatus === "paid") {
+        sendJson(request, response, 409, {
+          error: "This order has already been paid. Contact support or an admin before cancelling so the payment can be reviewed.",
+        });
+        return;
+      }
+
+      if (requestRecord.paymentStatus === "pending") {
+        sendJson(request, response, 409, {
+          error: "Stripe checkout is still pending. Finish or cancel checkout in Stripe before cancelling this order.",
+        });
+        return;
+      }
+
       const now = new Date().toISOString();
       requestRecord.status = "cancelled";
       requestRecord.cancelledAt = now;

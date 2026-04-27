@@ -45,6 +45,7 @@ type SectionCardProps = {
 };
 
 const REQUEST_IDEMPOTENCY_KEY = "campus-connect-request-idempotency-key";
+const REQUEST_IDEMPOTENCY_FINGERPRINT_KEY = "campus-connect-request-idempotency-fingerprint";
 
 function createRequestIdempotencyKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -52,6 +53,10 @@ function createRequestIdempotencyKey() {
   }
 
   return `request-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createRequestFingerprint(value: unknown) {
+  return JSON.stringify(value, Object.keys(value as Record<string, unknown>).sort());
 }
 
 function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButtonProps) {
@@ -348,45 +353,59 @@ export function RequestService() {
               .join("\n")
         : buildFoodNotes(orderNumber, orderItems, notes)
         : notes.trim();
+    const requestPayload = {
+      serviceType,
+      pickup,
+      destination: trimmedDestination,
+      deliveryLocationId: isFood ? housingArea : undefined,
+      deliveryLocationLabel: isFood ? selectedHousingArea?.label : undefined,
+      time: finalTime,
+      payment: finalPayment,
+      tipAmount: tipValidation.amount,
+      notes: requestNotes,
+      orderEta: orderEta.trim(),
+      orderScreenshot,
+      estimatedRetailTotal: Number.isFinite(estimatedRetailAmount) ? estimatedRetailAmount : undefined,
+      startCheckout: serviceType === "food",
+    };
+    const requestFingerprint = createRequestFingerprint(requestPayload);
+    const storedFingerprint = sessionStorage.getItem(REQUEST_IDEMPOTENCY_FINGERPRINT_KEY);
     const idempotencyKey =
-      idempotencyKeyRef.current ||
-      sessionStorage.getItem(REQUEST_IDEMPOTENCY_KEY) ||
-      createRequestIdempotencyKey();
+      requestFingerprint === storedFingerprint
+        ? idempotencyKeyRef.current || sessionStorage.getItem(REQUEST_IDEMPOTENCY_KEY) || createRequestIdempotencyKey()
+        : createRequestIdempotencyKey();
     idempotencyKeyRef.current = idempotencyKey;
     sessionStorage.setItem(REQUEST_IDEMPOTENCY_KEY, idempotencyKey);
+    sessionStorage.setItem(REQUEST_IDEMPOTENCY_FINGERPRINT_KEY, requestFingerprint);
 
     try {
       setIsSubmitting(true);
       const response = await api.createRequest(token, {
-        serviceType,
-        pickup,
-        destination: trimmedDestination,
-        deliveryLocationId: isFood ? housingArea : undefined,
-        deliveryLocationLabel: isFood ? selectedHousingArea?.label : undefined,
-        time: finalTime,
-        payment: finalPayment,
-        tipAmount: tipValidation.amount,
+        ...requestPayload,
         idempotencyKey,
-        notes: requestNotes,
-        orderEta: orderEta.trim(),
-        orderScreenshot,
-        estimatedRetailTotal: Number.isFinite(estimatedRetailAmount) ? estimatedRetailAmount : undefined,
-        startCheckout: serviceType === "food",
       });
 
       if (response.checkoutUrl) {
         sessionStorage.removeItem(REQUEST_IDEMPOTENCY_KEY);
+        sessionStorage.removeItem(REQUEST_IDEMPOTENCY_FINGERPRINT_KEY);
         idempotencyKeyRef.current = "";
         window.location.href = response.checkoutUrl;
         return;
       }
 
       sessionStorage.removeItem(REQUEST_IDEMPOTENCY_KEY);
+      sessionStorage.removeItem(REQUEST_IDEMPOTENCY_FINGERPRINT_KEY);
       idempotencyKeyRef.current = "";
       toast.success("Order placed successfully!");
       window.setTimeout(() => navigate(`/messages/${response.request.id}`), 700);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not post request.");
+      const message = error instanceof Error ? error.message : "Could not post request.";
+      if (message.includes("request key")) {
+        sessionStorage.removeItem(REQUEST_IDEMPOTENCY_KEY);
+        sessionStorage.removeItem(REQUEST_IDEMPOTENCY_FINGERPRINT_KEY);
+        idempotencyKeyRef.current = "";
+      }
+      toast.error(message);
     } finally {
       submitLockRef.current = false;
       setIsSubmitting(false);
