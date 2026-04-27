@@ -17,6 +17,7 @@ import {
   Store,
   TimerReset,
   UtensilsCrossed,
+  XCircle,
 } from "lucide-react";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -129,8 +130,19 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
   );
 }
 
-function RequestCard({ request, onOpen }: { request: RequestRecord; onOpen: (id: string) => void }) {
+function RequestCard({
+  cancelling,
+  onCancel,
+  onOpen,
+  request,
+}: {
+  cancelling: boolean;
+  onCancel: (id: string) => void;
+  onOpen: (id: string) => void;
+  request: RequestRecord;
+}) {
   const Icon = getRequestIcon(request.serviceType);
+  const canCancel = request.status === "open" || request.status === "accepted";
 
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -176,9 +188,22 @@ function RequestCard({ request, onOpen }: { request: RequestRecord; onOpen: (id:
             </div>
           </div>
 
-          <Button className="w-full sm:w-auto sm:self-center" onClick={() => onOpen(request.id)}>
-            {request.status === "accepted" ? "Open Chat" : "View"}
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:self-center">
+            <Button className="w-full sm:w-auto" onClick={() => onOpen(request.id)}>
+              {request.status === "accepted" ? "Open Chat" : "View"}
+            </Button>
+            {canCancel ? (
+              <Button
+                className="w-full sm:w-auto"
+                disabled={cancelling}
+                onClick={() => onCancel(request.id)}
+                variant="outline"
+              >
+                <XCircle className="mr-2 h-4 w-4" />
+                {cancelling ? "Cancelling..." : "Cancel"}
+              </Button>
+            ) : null}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -197,6 +222,10 @@ function buildRepeatPath(request: CampusSnapshot["myRecentRequests"][number]) {
   return `/request?${params.toString()}`;
 }
 
+function isActiveRequest(request: RequestRecord) {
+  return request.status === "open" || request.status === "accepted";
+}
+
 export function Home() {
   const navigate = useNavigate();
   const { token, user } = useAuth();
@@ -204,6 +233,7 @@ export function Home() {
   const [campusSnapshot, setCampusSnapshot] = useState<CampusSnapshot | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
+  const [cancellingRequestId, setCancellingRequestId] = useState("");
   const previousRequestState = useRef<Record<string, string>>({});
   const preferredView = getStoredView();
   const requestSectionTitle = "Your Orders";
@@ -224,7 +254,7 @@ export function Home() {
         const response = await api.bootstrap(token);
         setRequests(
           response.requests
-            .filter((entry) => entry.userId === response.user.id)
+            .filter((entry) => entry.userId === response.user.id && isActiveRequest(entry))
             .sort((left, right) => right.timeAgo.localeCompare(left.timeAgo)),
         );
         setCampusSnapshot(response.campusSnapshot);
@@ -248,10 +278,11 @@ export function Home() {
     const intervalId = window.setInterval(async () => {
       try {
         const response = await api.getRequests(token, "mine");
-        setRequests(response.requests);
+        const activeRequests = response.requests.filter(isActiveRequest);
+        setRequests(activeRequests);
 
         const nextState = Object.fromEntries(
-          response.requests.map((request) => [
+          activeRequests.map((request) => [
             request.id,
             `${request.status}:${request.foodReady ? "ready" : "waiting"}`,
           ]),
@@ -264,7 +295,7 @@ export function Home() {
           return;
         }
 
-        for (const request of response.requests) {
+        for (const request of activeRequests) {
           const before = previousState[request.id];
           const now = nextState[request.id];
 
@@ -291,6 +322,24 @@ export function Home() {
       window.clearInterval(intervalId);
     };
   }, [preferredView, token, user]);
+
+  async function handleCancelRequest(requestId: string) {
+    if (!token || cancellingRequestId) return;
+
+    const confirmed = window.confirm("Cancel this order? This will close it for everyone.");
+    if (!confirmed) return;
+
+    try {
+      setCancellingRequestId(requestId);
+      await api.cancelRequest(token, requestId);
+      setRequests((currentRequests) => currentRequests.filter((request) => request.id !== requestId));
+      toast.success("Order cancelled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not cancel this order.");
+    } finally {
+      setCancellingRequestId("");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-transparent pb-28 sm:pb-0">
@@ -437,7 +486,13 @@ export function Home() {
             ) : null}
 
             {!isLoadingDashboard && !dashboardError ? requests.map((request) => (
-              <RequestCard key={request.id} onOpen={(id) => navigate(`/messages/${id}`)} request={request} />
+              <RequestCard
+                cancelling={cancellingRequestId === request.id}
+                key={request.id}
+                onCancel={(id) => void handleCancelRequest(id)}
+                onOpen={(id) => navigate(`/messages/${id}`)}
+                request={request}
+              />
             )) : null}
           </div>
 

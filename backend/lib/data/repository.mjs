@@ -5,7 +5,7 @@ import { ualbanyRestaurants } from "../config.mjs";
 import { createIdempotencyExpiry } from "../idempotency.mjs";
 import { demoUsers, seedData } from "./seed.mjs";
 import { normalizeDataSnapshot } from "./normalize.mjs";
-import { expireTimedOutRequests } from "../requests.mjs";
+import { expireTimedOutRequests, getTimedOutRequestIds } from "../requests.mjs";
 
 export function createDataRepository(adapter, { log = () => {} } = {}) {
   let userUniqueIndexesReady = true;
@@ -15,8 +15,14 @@ export function createDataRepository(adapter, { log = () => {} } = {}) {
     data.restaurants = ualbanyRestaurants;
 
     const normalized = normalizeDataSnapshot(data);
+    const timedOutRequestIds = getTimedOutRequestIds(data);
     const expired = expireTimedOutRequests(data);
     const changed = normalized || expired;
+
+    if (timedOutRequestIds.length && adapter.canWriteNormalizedSnapshots === false) {
+      await adapter.deleteRequestsByIds?.(timedOutRequestIds);
+      await adapter.deleteMessagesByRequestIds?.(timedOutRequestIds);
+    }
 
     if (changed && adapter.canWriteNormalizedSnapshots !== false) {
       await adapter.writeSnapshot(data);

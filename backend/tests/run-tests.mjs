@@ -472,7 +472,7 @@ await runTest("findRecentSimilarSubmission catches rapid retry with same core or
   assert.equal(laterRetry, undefined);
 });
 
-await runTest("expireTimedOutRequests closes stale open orders only", async () => {
+await runTest("expireTimedOutRequests deletes stale open orders only", async () => {
   const now = new Date("2026-04-26T14:00:00.000Z");
   const data = {
     requests: [
@@ -492,16 +492,18 @@ await runTest("expireTimedOutRequests closes stale open orders only", async () =
         createdAt: "2026-04-26T13:30:00.000Z",
       },
     ],
-    messages: {},
+    messages: {
+      "request-stale-open": [{ id: "message-old" }],
+      "request-stale-accepted": [{ id: "message-accepted" }],
+    },
   };
 
   assert.equal(expireTimedOutRequests(data, now), true);
-  assert.equal(data.requests[0].status, "expired");
-  assert.equal(data.requests[0].expiredAt, now.toISOString());
-  assert.equal(data.requests[0].closedBy, "system");
-  assert.equal(data.messages["request-stale-open"].length, 1);
-  assert.equal(data.requests[1].status, "accepted");
-  assert.equal(data.requests[2].status, "open");
+  assert.deepEqual(data.requests.map((request) => request.id), ["request-stale-accepted", "request-fresh-open"]);
+  assert.equal(data.messages["request-stale-open"], undefined);
+  assert.equal(data.messages["request-stale-accepted"].length, 1);
+  assert.equal(data.requests[0].status, "accepted");
+  assert.equal(data.requests[1].status, "open");
   assert.equal(expireTimedOutRequests(data, now), false);
 });
 

@@ -12,9 +12,9 @@ export function isClosedRequestStatus(status) {
   return ["completed", "cancelled", "expired"].includes(status);
 }
 
-export function expireTimedOutRequests(data, now = new Date()) {
-  let changed = false;
+export function getTimedOutRequestIds(data, now = new Date()) {
   const nowMs = now.getTime();
+  const timedOutRequestIds = [];
 
   for (const request of data.requests || []) {
     if (request.status !== "open") continue;
@@ -22,21 +22,26 @@ export function expireTimedOutRequests(data, now = new Date()) {
     const createdAtMs = new Date(request.createdAt).getTime();
     if (!Number.isFinite(createdAtMs) || nowMs - createdAtMs < ORDER_TIMEOUT_MS) continue;
 
-    request.status = "expired";
-    request.expiredAt = now.toISOString();
-    request.closedBy = "system";
-    data.messages[request.id] = data.messages[request.id] || [];
-    data.messages[request.id].push({
-      id: `message-timeout-${request.id}`,
-      senderId: "system",
-      senderName: "CampusConnect",
-      text: "This request timed out because no courier accepted it within 60 minutes.",
-      createdAt: now.toISOString(),
-    });
-    changed = true;
+    timedOutRequestIds.push(request.id);
   }
 
-  return changed;
+  return timedOutRequestIds;
+}
+
+export function expireTimedOutRequests(data, now = new Date()) {
+  const timedOutRequestIds = new Set(getTimedOutRequestIds(data, now));
+  if (!timedOutRequestIds.size) {
+    return false;
+  }
+
+  data.requests = (data.requests || []).filter((request) => !timedOutRequestIds.has(request.id));
+  data.messages = data.messages || {};
+
+  for (const requestId of timedOutRequestIds) {
+    delete data.messages[requestId];
+  }
+
+  return true;
 }
 
 export function formatRelativeTime(iso) {

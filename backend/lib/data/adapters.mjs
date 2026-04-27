@@ -183,11 +183,20 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
     async deleteRequestById(requestId) {
       state.requests = state.requests.filter((request) => request.id !== requestId);
     },
+    async deleteRequestsByIds(requestIds) {
+      const ids = new Set(requestIds);
+      state.requests = state.requests.filter((request) => !ids.has(request.id));
+    },
     async insertMessages(requestId, messages) {
       state.messages[requestId] = clone(messages);
     },
     async deleteMessagesByRequestId(requestId) {
       delete state.messages[requestId];
+    },
+    async deleteMessagesByRequestIds(requestIds) {
+      for (const requestId of requestIds) {
+        delete state.messages[requestId];
+      }
     },
   };
 }
@@ -431,11 +440,17 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     async deleteRequestById(requestId) {
       await collections.requests.deleteOne({ id: requestId });
     },
+    async deleteRequestsByIds(requestIds) {
+      await collections.requests.deleteMany({ id: { $in: requestIds } });
+    },
     async insertMessages(requestId, messages) {
       await collections.messages.insertOne({ requestId, messages });
     },
     async deleteMessagesByRequestId(requestId) {
       await collections.messages.deleteOne({ requestId });
+    },
+    async deleteMessagesByRequestIds(requestIds) {
+      await collections.messages.deleteMany({ requestId: { $in: requestIds } });
     },
   };
 }
