@@ -89,7 +89,7 @@ export function Ratings() {
           <CardContent className="space-y-6">
             {!loading && !canRate ? (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-                This request does not have another participant to rate yet. Once a courier accepts the job, you can come back here.
+                This request is not ready for ratings yet. Come back after it has another participant and is marked complete.
               </div>
             ) : null}
 

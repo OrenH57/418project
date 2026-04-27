@@ -128,6 +128,16 @@ export async function handleRatingsRoute(context) {
       return true;
     }
 
+    if (requestRecord.status !== "completed") {
+      sendJson(response, 200, {
+        canRate: false,
+        requestId,
+        targetUser: null,
+        existingRating: null,
+      });
+      return true;
+    }
+
     const isRequester = requestRecord.userId === auth.user.id;
     const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
     const targetUser = targetUserId ? auth.data.users.find((entry) => entry.id === targetUserId) ?? null : null;
@@ -157,6 +167,11 @@ export async function handleRatingsRoute(context) {
 
     if (!canAccessRequest(auth.user.id, requestRecord)) {
       sendJson(response, 403, { error: "You do not have access to this rating flow." });
+      return true;
+    }
+
+    if (requestRecord.status !== "completed") {
+      sendJson(response, 400, { error: "You can rate this request after it is marked complete." });
       return true;
     }
 

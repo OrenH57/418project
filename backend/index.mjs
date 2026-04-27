@@ -23,6 +23,7 @@ import {
 } from "./lib/idempotency.mjs";
 import {
   canAccessRequest,
+  decoratePublicCourierRequest,
   decorateRequest,
   findRecentDuplicateRequest,
   findRecentSimilarSubmission,
@@ -756,7 +757,9 @@ const server = http.createServer(async (request, response) => {
         user: sanitizeUser(auth.user),
         restaurants: auth.data.restaurants,
         deliveryLocations: DELIVERY_LOCATIONS,
-        requests: auth.data.requests.map((entry) => decorateRequest(entry, auth.data)),
+        requests: auth.data.requests
+          .filter((entry) => entry.userId === auth.user.id)
+          .map((entry) => decorateRequest(entry, auth.data)),
         campusSnapshot: getCampusSnapshot(auth.data, auth.user.id),
       });
       return;
@@ -771,10 +774,10 @@ const server = http.createServer(async (request, response) => {
 
       if (mode === "mine") {
         filtered = filtered.filter((entry) => entry.userId === auth.user.id);
-      }
-
-      if (mode === "courier") {
+      } else if (mode === "courier") {
         filtered = filtered.filter((entry) => entry.status === "open" || entry.acceptedBy === auth.user.id);
+      } else {
+        filtered = filtered.filter((entry) => entry.userId === auth.user.id);
       }
 
       sendJson(request, response, 200, {
@@ -782,7 +785,11 @@ const server = http.createServer(async (request, response) => {
           .filter((entry) => entry.moderationStatus !== "removed")
           .slice()
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-          .map((entry) => decorateRequest(entry, auth.data)),
+          .map((entry) =>
+            mode === "courier" && entry.status === "open" && entry.acceptedBy !== auth.user.id
+              ? decoratePublicCourierRequest(entry)
+              : decorateRequest(entry, auth.data),
+          ),
       });
       return;
     }

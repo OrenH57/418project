@@ -72,6 +72,47 @@ export function decorateRequest(record, data) {
   };
 }
 
+export function decoratePublicCourierRequest(record) {
+  return {
+    id: record.id,
+    userId: "",
+    requesterName: "Customer",
+    requesterPhone: "",
+    serviceType: record.serviceType,
+    pickup: record.pickup,
+    destination: record.deliveryLocationLabel || "Campus drop-off",
+    deliveryLocationId: record.deliveryLocationId || "",
+    deliveryLocationLabel: record.deliveryLocationLabel || "",
+    time: record.time,
+    payment: record.payment,
+    basePayment: record.basePayment,
+    tipAmount: record.tipAmount,
+    notes: "",
+    status: record.status,
+    acceptedBy: null,
+    timeAgo: formatRelativeTime(record.createdAt),
+    courierName: null,
+    orderEta: "",
+    foodReady: false,
+    foodReadyAt: "",
+    completedAt: "",
+    cancelledAt: "",
+    expiredAt: "",
+    closedBy: "",
+    orderScreenshot: "",
+    estimatedRetailTotal: null,
+    estimatedDiscountCost: null,
+    runnerEarnings: null,
+    paymentStatus: record.paymentStatus || "unpaid",
+    paidAt: "",
+    flagged: Boolean(record.flagged),
+    flaggedReason: "",
+    moderationStatus: record.moderationStatus || "clear",
+    removedAt: "",
+    removedBy: "",
+  };
+}
+
 export function canAccessRequest(userId, requestRecord) {
   return requestRecord.userId === userId || requestRecord.acceptedBy === userId;
 }

@@ -12,9 +12,15 @@ const { dataFile } = await import("../lib/config.mjs");
 const { dataRepository, readData } = await import("../lib/store.mjs");
 const { createMemoryDataAdapter } = await import("../lib/data/adapters.mjs");
 const { createDataRepository } = await import("../lib/data/repository.mjs");
-const { expireTimedOutRequests, findRecentDuplicateRequest, findRecentSimilarSubmission } = await import("../lib/requests.mjs");
+const {
+  decoratePublicCourierRequest,
+  expireTimedOutRequests,
+  findRecentDuplicateRequest,
+  findRecentSimilarSubmission,
+} = await import("../lib/requests.mjs");
 const { getDeliveryPricingForLocation } = await import("../lib/deliveryPricing.mjs");
 const { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } = await import("../lib/paymentPolicy.mjs");
+const { handleRatingsRoute } = await import("../lib/routeGroups.mjs");
 const {
   IDEMPOTENCY_TTL_MS,
   createIdempotencyExpiry,
@@ -507,6 +513,42 @@ await runTest("expireTimedOutRequests deletes stale open orders only", async () 
   assert.equal(expireTimedOutRequests(data, now), false);
 });
 
+await runTest("decoratePublicCourierRequest hides sensitive order details", async () => {
+  const publicRequest = decoratePublicCourierRequest({
+    id: "request-private",
+    userId: "user-customer",
+    requesterName: "Ariana Green",
+    serviceType: "food",
+    pickup: "Starbucks",
+    destination: "Dutch Quad - Ten Broeck Hall - Front entrance",
+    deliveryLocationId: "dutch-quad",
+    deliveryLocationLabel: "Dutch Quad",
+    time: "Now",
+    payment: "4.99",
+    basePayment: 3.99,
+    tipAmount: 1,
+    notes: "GET order #1234\nItems: latte and bagel",
+    status: "open",
+    acceptedBy: null,
+    orderEta: "Ready at 12:15",
+    orderScreenshot: "data:image/png;base64,aaaa",
+    paymentStatus: "paid",
+    flagged: false,
+    moderationStatus: "clear",
+    createdAt: new Date().toISOString(),
+  });
+
+  assert.equal(publicRequest.userId, "");
+  assert.equal(publicRequest.requesterName, "Customer");
+  assert.equal(publicRequest.requesterPhone, "");
+  assert.equal(publicRequest.destination, "Dutch Quad");
+  assert.equal(publicRequest.notes, "");
+  assert.equal(publicRequest.orderEta, "");
+  assert.equal(publicRequest.orderScreenshot, "");
+  assert.equal(publicRequest.payment, "4.99");
+  assert.equal(publicRequest.pickup, "Starbucks");
+});
+
 await runTest("delivery pricing validates and calculates supported campus locations", async () => {
   assert.deepEqual(getDeliveryPricingForLocation("library"), {
     ok: true,
@@ -606,6 +648,67 @@ await runTest("idempotency helpers normalize keys and fingerprint retry payloads
   assert.equal(normalizeIdempotencyKey("x".repeat(121)), "");
   assert.equal(createRequestFingerprint(payload), createRequestFingerprint(retryPayload));
   assert.equal(createIdempotencyExpiry(now).getTime(), now.getTime() + IDEMPOTENCY_TTL_MS);
+});
+
+await runTest("ratings cannot be submitted before a request is completed", async () => {
+  const data = {
+    users: [
+      {
+        id: "rating-requester",
+        name: "Rating Requester",
+        email: "rating.requester@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "requester",
+      },
+      {
+        id: "rating-courier",
+        name: "Rating Courier",
+        email: "rating.courier@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "courier",
+      },
+    ],
+    sessions: [],
+    requests: [
+      {
+        id: "request-rating-pending",
+        userId: "rating-requester",
+        requesterName: "Rating Requester",
+        serviceType: "food",
+        pickup: "Baba's Pizza",
+        destination: "State Quad",
+        time: "Now",
+        payment: "3.99",
+        notes: "",
+        status: "accepted",
+        acceptedBy: "rating-courier",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  };
+  const calls = [];
+  const context = {
+    request: { method: "POST" },
+    response: {},
+    url: new URL("http://127.0.0.1:4174/api/ratings/request-rating-pending"),
+    requireUser: async () => ({ data, user: data.users[0] }),
+    sendJson: (_response, statusCode, payload) => calls.push({ statusCode, payload }),
+    readBody: async () => ({ rating: 5, comment: "Early rating" }),
+    canAccessRequest: () => true,
+    writeData: async () => {},
+  };
+
+  assert.equal(await handleRatingsRoute(context), true);
+  assert.deepEqual(calls, [
+    {
+      statusCode: 400,
+      payload: { error: "You can rate this request after it is marked complete." },
+    },
+  ]);
+  assert.equal(data.ratings.length, 0);
 });
 
 await fs.rm(tempRoot, { recursive: true, force: true });

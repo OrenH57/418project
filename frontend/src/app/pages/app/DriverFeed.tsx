@@ -307,32 +307,24 @@ export function DriverFeed() {
                         </span>
                       </div>
 
-                      {request.orderScreenshot ? (
-                        <div className="mt-4">
-                          <img
-                            alt="Uploaded order screenshot"
-                            className="max-h-48 rounded-2xl border border-[var(--border)] object-cover"
-                            src={request.orderScreenshot}
-                          />
-                        </div>
-                      ) : null}
-
                       {request.serviceType === "food" ? (
                         <p className="mt-3 text-xs text-[var(--muted)]">
-                          Food job: you need a verified campus email to take this one.
+                          Order number, items, screenshot, and contact details unlock after you accept.
                         </p>
                       ) : null}
 
-                      <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
-                        <Button
-                          className="rounded-full px-3"
-                          onClick={() => navigate(`/messages/${request.id}`)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Details
-                        </Button>
-                      </div>
+                      {request.status === "accepted" ? (
+                        <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
+                          <Button
+                            className="rounded-full px-3"
+                            onClick={() => navigate(`/messages/${request.id}`)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Details
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
 
                     {request.status === "accepted" ? (
