@@ -304,9 +304,9 @@ function sendJson(requestOrResponse, responseOrStatusCode, statusCodeOrPayload, 
   const hasRequest = typeof requestOrResponse?.method === "string";
   const request = hasRequest ? requestOrResponse : { headers: {}, socket: {} };
   const response = hasRequest ? responseOrStatusCode : requestOrResponse;
-  const statusCode = hasRequest ? responseOrStatusCode : responseOrStatusCode;
-  const payload = hasRequest ? statusCodeOrPayload : statusCodeOrPayload;
-  const extraHeaders = hasRequest ? payloadOrHeaders || maybeHeaders : payloadOrHeaders || {};
+  const statusCode = hasRequest ? statusCodeOrPayload : responseOrStatusCode;
+  const payload = hasRequest ? payloadOrHeaders : statusCodeOrPayload;
+  const extraHeaders = hasRequest ? maybeHeaders : payloadOrHeaders || {};
 
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
