@@ -92,8 +92,10 @@ export function Messaging() {
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not sync the Stripe payment result.");
       } finally {
-        searchParams.delete("payment");
-        setSearchParams(searchParams, { replace: true });
+        const nextSearchParams = new URLSearchParams(searchParams);
+        nextSearchParams.delete("payment");
+        nextSearchParams.delete("session_id");
+        setSearchParams(nextSearchParams, { replace: true });
       }
     })();
   }, [requestId, searchParams, setSearchParams, token]);
@@ -431,7 +433,7 @@ export function Messaging() {
               ) : null}
             </div>
 
-            {isRequester && isActiveRequest && requestRecord?.serviceType !== "food" ? (
+            {isRequester && isActiveRequest ? (
               <div className="space-y-3 rounded-xl border border-[var(--border)] bg-white p-4">
                 <div>
                   <Label htmlFor="chat-tip">Optional tip</Label>

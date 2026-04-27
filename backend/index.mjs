@@ -32,6 +32,13 @@ import {
 import { verifyMicrosoftIdToken } from "./lib/microsoftAuth.mjs";
 import { createStripeCheckoutSession, getStripeCheckoutSession } from "./lib/payments.mjs";
 import { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } from "./lib/paymentPolicy.mjs";
+import {
+  buildSecurityHeaders,
+  createRouteRateLimiter,
+  getBodyLimitForRequest,
+  truncateText,
+  validateDataImage,
+} from "./lib/security.mjs";
 import { createMongoDataAdapter } from "./lib/data/adapters.mjs";
 import { createDataRepository } from "./lib/data/repository.mjs";
 import { SESSION_TTL_MS, isExpiredSession } from "./lib/data/normalize.mjs";
@@ -99,6 +106,34 @@ async function ensureIndex(collection, key, options = {}) {
 
 const MAX_ACTIVE_REQUESTS_PER_USER = 3;
 const ORDER_CREATION_LOCK_TTL_MS = 30 * 1000;
+const checkAnonymousRateLimit = createRouteRateLimiter([
+  {
+    keyPrefix: "auth",
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    matches: (request, url) => request.method === "POST" && url.pathname.startsWith("/api/auth/"),
+  },
+  {
+    keyPrefix: "general",
+    windowMs: 60 * 1000,
+    max: 120,
+    matches: (request, url) => url.pathname.startsWith("/api/"),
+  },
+]);
+const checkUserRateLimit = createRouteRateLimiter([
+  {
+    keyPrefix: "mutation",
+    windowMs: 60 * 1000,
+    max: 60,
+    matches: (request) => request.method === "POST" || request.method === "PATCH",
+  },
+  {
+    keyPrefix: "messages",
+    windowMs: 60 * 1000,
+    max: 20,
+    matches: (request, url) => request.method === "POST" && url.pathname.startsWith("/api/messages/"),
+  },
+]);
 
 function logBackendEvent(event, details = {}) {
   console.log(JSON.stringify({
@@ -265,12 +300,18 @@ async function releaseOrderCreationLock(userId) {
   await dataRepository.releaseOrderCreationLock(userId);
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(requestOrResponse, responseOrStatusCode, statusCodeOrPayload, payloadOrHeaders, maybeHeaders = {}) {
+  const hasRequest = typeof requestOrResponse?.method === "string";
+  const request = hasRequest ? requestOrResponse : { headers: {}, socket: {} };
+  const response = hasRequest ? responseOrStatusCode : requestOrResponse;
+  const statusCode = hasRequest ? responseOrStatusCode : responseOrStatusCode;
+  const payload = hasRequest ? statusCodeOrPayload : statusCodeOrPayload;
+  const extraHeaders = hasRequest ? payloadOrHeaders || maybeHeaders : payloadOrHeaders || {};
+
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    ...buildSecurityHeaders(request),
+    ...extraHeaders,
   });
   response.end(JSON.stringify(payload));
 }
@@ -312,7 +353,7 @@ async function requireUser(request, response) {
     logBackendEvent("session.missing", {
       path: request.url || "",
     });
-    sendJson(response, 401, { error: "Missing session token." });
+    sendJson(request, response, 401, { error: "Missing session token." });
     return null;
   }
 
@@ -331,7 +372,7 @@ async function requireUser(request, response) {
         path: request.url || "",
       });
     }
-    sendJson(response, 401, { error: "Session expired. Please log in again." });
+    sendJson(request, response, 401, { error: "Session expired. Please log in again." });
     return null;
   }
 
@@ -343,7 +384,7 @@ async function requireUser(request, response) {
       userId: session.userId,
       path: request.url || "",
     });
-    sendJson(response, 401, { error: "User not found." });
+    sendJson(request, response, 401, { error: "User not found." });
     return null;
   }
 
@@ -352,7 +393,7 @@ async function requireUser(request, response) {
       userId: user.id,
       path: request.url || "",
     });
-    sendJson(response, 403, {
+    sendJson(request, response, 403, {
       error: user.suspendedReason
         ? `This account is suspended: ${user.suspendedReason}`
         : "This account is suspended.",
@@ -360,12 +401,35 @@ async function requireUser(request, response) {
     return null;
   }
 
+  const url = new URL(request.url || "/", "http://127.0.0.1:4174");
+  if (!checkAuthenticatedRateLimit(request, response, url, user.id)) {
+    return null;
+  }
+
   return { data, user };
 }
 
-async function readBody(request) {
+function checkAuthenticatedRateLimit(request, response, url, userId) {
+  const rateLimit = checkUserRateLimit(request, url, userId);
+  if (rateLimit.allowed) return true;
+
+  sendJson(request, response, 429, { error: "Too many requests. Please slow down and try again." }, {
+    "Retry-After": String(rateLimit.retryAfterSeconds),
+  });
+  return false;
+}
+
+async function readBody(request, limitBytes = 256 * 1024) {
   const chunks = [];
+  let receivedBytes = 0;
+
   for await (const chunk of request) {
+    receivedBytes += chunk.length;
+    if (receivedBytes > limitBytes) {
+      const error = new Error("Request body is too large.");
+      error.statusCode = 413;
+      throw error;
+    }
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -375,48 +439,65 @@ async function readBody(request) {
 const server = http.createServer(async (request, response) => {
   try {
     if (!request.url) {
-      sendJson(response, 404, { error: "Missing URL." });
-      return;
-    }
-
-    if (request.method === "OPTIONS") {
-      sendJson(response, 200, { ok: true });
+      sendJson(request, response, 404, { error: "Missing URL." });
       return;
     }
 
     const url = new URL(request.url, "http://127.0.0.1:4174");
 
+    if (request.method === "OPTIONS") {
+      sendJson(request, response, 200, { ok: true });
+      return;
+    }
+
+    const anonymousRateLimit = checkAnonymousRateLimit(request, url);
+    if (!anonymousRateLimit.allowed) {
+      sendJson(request, response, 429, { error: "Too many requests. Please slow down and try again." }, {
+        "Retry-After": String(anonymousRateLimit.retryAfterSeconds),
+      });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/health") {
-      sendJson(response, 200, { ok: true, backend: "mongodb" });
+      sendJson(request, response, 200, { ok: true, backend: "mongodb" });
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/api/auth/signup") {
-      const body = await readBody(request);
+      const body = await readBody(request, getBodyLimitForRequest(request, url));
       const email = String(body.email || "").trim().toLowerCase();
       const phone = String(body.phone || "").trim();
       const password = String(body.password || "");
       const name = String(body.name || "").trim();
       const role = body.role === "courier" ? "courier" : "requester";
-      const ualbanyIdImage = String(body.ualbanyIdImage || "").trim();
+      const imageResult = validateDataImage(body.ualbanyIdImage, {
+        required: role === "courier",
+        maxBytes: 3 * 1024 * 1024,
+      });
+      const ualbanyIdImage = imageResult.ok ? imageResult.value : "";
 
       if (!name || !email || !phone || !password) {
-        sendJson(response, 400, { error: "Name, phone, email, and password are required." });
+        sendJson(request, response, 400, { error: "Name, phone, email, and password are required." });
+        return;
+      }
+
+      if (!imageResult.ok) {
+        sendJson(request, response, 400, { error: imageResult.error });
         return;
       }
 
       if (!isCampusEmail(email)) {
-        sendJson(response, 400, { error: "Only .edu email addresses are allowed." });
+        sendJson(request, response, 400, { error: "Only .edu email addresses are allowed." });
         return;
       }
 
       if (password.length < 8) {
-        sendJson(response, 400, { error: "Password must be at least 8 characters." });
+        sendJson(request, response, 400, { error: "Password must be at least 8 characters." });
         return;
       }
 
       if (role === "courier" && !ualbanyIdImage) {
-        sendJson(response, 400, { error: "Courier accounts need a UAlbany ID photo." });
+        sendJson(request, response, 400, { error: "Courier accounts need a UAlbany ID photo." });
         return;
       }
 
@@ -428,7 +509,7 @@ const server = http.createServer(async (request, response) => {
           email,
           existingUserId: existingUser.id,
         });
-        sendJson(response, 409, { error: "That email is already registered." });
+        sendJson(request, response, 409, { error: "That email is already registered." });
         return;
       }
 
@@ -460,7 +541,7 @@ const server = http.createServer(async (request, response) => {
           email: user.email,
           userId: user.id,
         });
-        sendJson(response, 400, { error: userCreationError });
+        sendJson(request, response, 400, { error: userCreationError });
         return;
       }
 
@@ -475,13 +556,13 @@ const server = http.createServer(async (request, response) => {
             email: user.email,
             userId: user.id,
           });
-          sendJson(response, 409, { error: duplicateMessage });
+          sendJson(request, response, 409, { error: duplicateMessage });
           return;
         }
         throw error;
       }
       const session = await replaceUserSessionAtomic(user.id);
-      sendJson(response, 201, { token: session.token, user: sanitizeUser(user) });
+      sendJson(request, response, 201, { token: session.token, user: sanitizeUser(user) });
       logBackendEvent("user.created", {
         userId: user.id,
         email: user.email,
@@ -497,14 +578,23 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/auth/outlook") {
-      const body = await readBody(request);
+      const body = await readBody(request, getBodyLimitForRequest(request, url));
       const idToken = String(body.idToken || "").trim();
       const phone = String(body.phone || "").trim();
       const role = body.role === "courier" ? "courier" : "requester";
-      const ualbanyIdImage = String(body.ualbanyIdImage || "").trim();
+      const imageResult = validateDataImage(body.ualbanyIdImage, {
+        required: role === "courier",
+        maxBytes: 3 * 1024 * 1024,
+      });
+      const ualbanyIdImage = imageResult.ok ? imageResult.value : "";
 
       if (!idToken) {
-        sendJson(response, 400, { error: "Microsoft ID token is required." });
+        sendJson(request, response, 400, { error: "Microsoft ID token is required." });
+        return;
+      }
+
+      if (!imageResult.ok) {
+        sendJson(request, response, 400, { error: imageResult.error });
         return;
       }
 
@@ -536,7 +626,7 @@ const server = http.createServer(async (request, response) => {
         user = { ...user, ...updates };
       } else {
         if (role === "courier" && !ualbanyIdImage) {
-          sendJson(response, 400, { error: "Courier accounts need a UAlbany ID photo." });
+          sendJson(request, response, 400, { error: "Courier accounts need a UAlbany ID photo." });
           return;
         }
 
@@ -567,7 +657,7 @@ const server = http.createServer(async (request, response) => {
             email: user.email,
             userId: user.id,
           });
-          sendJson(response, 400, { error: userCreationError });
+          sendJson(request, response, 400, { error: userCreationError });
           return;
         }
 
@@ -582,7 +672,7 @@ const server = http.createServer(async (request, response) => {
               email: user.email,
               userId: user.id,
             });
-            sendJson(response, 409, { error: duplicateMessage });
+            sendJson(request, response, 409, { error: duplicateMessage });
             return;
           }
           throw error;
@@ -596,7 +686,7 @@ const server = http.createServer(async (request, response) => {
       }
 
       const session = await replaceUserSessionAtomic(user.id);
-      sendJson(response, 200, { token: session.token, user: sanitizeUser(user) });
+      sendJson(request, response, 200, { token: session.token, user: sanitizeUser(user) });
       logBackendEvent("user.login", {
         userId: user.id,
         email: user.email,
@@ -607,22 +697,22 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
-      const body = await readBody(request);
+      const body = await readBody(request, getBodyLimitForRequest(request, url));
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
       const user = await dataRepository.findUserByEmail(email);
 
       if (user?.authProvider === "outlook") {
-        sendJson(response, 400, { error: "This account uses Outlook. Use the Outlook button to continue." });
+        sendJson(request, response, 400, { error: "This account uses Outlook. Use the Outlook button to continue." });
         return;
       }
       if (!user || !verifyPassword(password, user.password)) {
-        sendJson(response, 401, { error: "Invalid email or password." });
+        sendJson(request, response, 401, { error: "Invalid email or password." });
         return;
       }
 
       const session = await replaceUserSessionAtomic(user.id);
-      sendJson(response, 200, { token: session.token, user: sanitizeUser(user) });
+      sendJson(request, response, 200, { token: session.token, user: sanitizeUser(user) });
       logBackendEvent("user.login", {
         userId: user.id,
         email: user.email,
@@ -648,21 +738,21 @@ const server = http.createServer(async (request, response) => {
         });
       }
 
-      sendJson(response, 200, { ok: true });
+      sendJson(request, response, 200, { ok: true });
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/api/session") {
       const auth = await requireUser(request, response);
       if (!auth) return;
-      sendJson(response, 200, { user: sanitizeUser(auth.user) });
+      sendJson(request, response, 200, { user: sanitizeUser(auth.user) });
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       const auth = await requireUser(request, response);
       if (!auth) return;
-      sendJson(response, 200, {
+      sendJson(request, response, 200, {
         user: sanitizeUser(auth.user),
         restaurants: auth.data.restaurants,
         deliveryLocations: DELIVERY_LOCATIONS,
@@ -687,7 +777,7 @@ const server = http.createServer(async (request, response) => {
         filtered = filtered.filter((entry) => entry.status === "open" || entry.acceptedBy === auth.user.id);
       }
 
-      sendJson(response, 200, {
+      sendJson(request, response, 200, {
         requests: filtered
           .filter((entry) => entry.moderationStatus !== "removed")
           .slice()
@@ -701,7 +791,7 @@ const server = http.createServer(async (request, response) => {
       const auth = await requireUser(request, response);
       if (!auth) return;
 
-      const body = await readBody(request);
+      const body = await readBody(request, getBodyLimitForRequest(request, url));
       const startCheckout = body.startCheckout === true;
       const serviceType = String(body.serviceType || "food");
       const deliveryPricing = serviceType === "food" ? getDeliveryPricingForLocation(body.deliveryLocationId) : null;
@@ -725,7 +815,7 @@ const server = http.createServer(async (request, response) => {
           deliveryLocationId: String(body.deliveryLocationId || "").trim(),
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: deliveryPricing.error });
+        sendJson(request, response, 400, { error: deliveryPricing.error });
         return;
       }
 
@@ -737,35 +827,44 @@ const server = http.createServer(async (request, response) => {
           tipAmount: body.tipAmount,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: tipResult.error });
+        sendJson(request, response, 400, { error: tipResult.error });
         return;
       }
 
       const basePayment = deliveryPricing?.fee ?? MIN_PAYMENT_OFFER;
       const paymentTotal = buildPaymentTotal(basePayment, tipResult.amount);
 
+      const screenshotResult = validateDataImage(body.orderScreenshot, {
+        required: false,
+        maxBytes: 2 * 1024 * 1024,
+      });
+      if (!screenshotResult.ok) {
+        sendJson(request, response, 400, { error: screenshotResult.error });
+        return;
+      }
+
       const requestRecord = {
         id: `request-${crypto.randomUUID()}`,
         userId: auth.user.id,
         requesterName: auth.user.name,
         serviceType,
-        pickup: String(body.pickup || "").trim(),
-        destination: String(body.destination || "").trim(),
-        time: String(body.time || "").trim(),
+        pickup: truncateText(body.pickup, 120),
+        destination: truncateText(body.destination, 180),
+        time: truncateText(body.time, 80),
         payment: formatPaymentAmount(paymentTotal),
         basePayment,
         tipAmount: tipResult.amount,
         deliveryLocationId: deliveryPricing?.id ?? "",
         deliveryLocationLabel: deliveryPricing?.label ?? "",
-        notes: String(body.notes || "").trim(),
-        orderEta: String(body.orderEta || "").trim(),
+        notes: truncateText(body.notes, 1000),
+        orderEta: truncateText(body.orderEta, 120),
         foodReady: false,
         foodReadyAt: "",
         completedAt: "",
         cancelledAt: "",
         expiredAt: "",
         closedBy: "",
-        orderScreenshot: String(body.orderScreenshot || "").trim(),
+        orderScreenshot: screenshotResult.value,
         estimatedRetailTotal: Number.isFinite(Number(body.estimatedRetailTotal)) ? Number(body.estimatedRetailTotal) : null,
         estimatedDiscountCost: null,
         runnerEarnings: null,
@@ -789,7 +888,7 @@ const server = http.createServer(async (request, response) => {
           requestId: requestRecord.id,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: "Pickup, time, and delivery fee are required." });
+        sendJson(request, response, 400, { error: "Pickup, time, and delivery fee are required." });
         return;
       }
 
@@ -800,7 +899,7 @@ const server = http.createServer(async (request, response) => {
           requestId: requestRecord.id,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: "Delivery destination is required for food orders." });
+        sendJson(request, response, 400, { error: "Delivery destination is required for food orders." });
         return;
       }
 
@@ -813,7 +912,7 @@ const server = http.createServer(async (request, response) => {
           payment: requestRecord.payment,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: `Payment offers must be at least $${MIN_PAYMENT_OFFER}.` });
+        sendJson(request, response, 400, { error: `Payment offers must be at least $${MIN_PAYMENT_OFFER}.` });
         return;
       }
 
@@ -825,7 +924,7 @@ const server = http.createServer(async (request, response) => {
             requestId: requestRecord.id,
             idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
           });
-          sendJson(response, 400, { error: "Estimated retail total is required for discount dollar runs." });
+          sendJson(request, response, 400, { error: "Estimated retail total is required for discount dollar runs." });
           return;
         }
 
@@ -841,7 +940,7 @@ const server = http.createServer(async (request, response) => {
             estimatedDiscountCost: requestRecord.estimatedDiscountCost,
             idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
           });
-          sendJson(response, 400, { error: "Platform payment must leave room for the runner to earn money." });
+          sendJson(request, response, 400, { error: "Platform payment must leave room for the runner to earn money." });
           return;
         }
       }
@@ -856,7 +955,7 @@ const server = http.createServer(async (request, response) => {
           deliveryLocationId: requestRecord.deliveryLocationId,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 400, { error: requestCreationError });
+        sendJson(request, response, 400, { error: requestCreationError });
         return;
       }
 
@@ -879,7 +978,7 @@ const server = http.createServer(async (request, response) => {
             incomingFingerprint: idempotencyFingerprint,
             existingFingerprint: existingRecord.fingerprint,
           });
-          sendJson(response, 409, { error: "This request key was already used for a different order." });
+          sendJson(request, response, 409, { error: "This request key was already used for a different order." });
           return;
         }
 
@@ -890,7 +989,7 @@ const server = http.createServer(async (request, response) => {
             responseStatus: existingRecord.responseStatus || 200,
             requestId: existingRecord.responsePayload?.request?.id || "",
           });
-          sendJson(response, existingRecord.responseStatus || 200, existingRecord.responsePayload);
+          sendJson(request, response, existingRecord.responseStatus || 200, existingRecord.responsePayload);
           return;
         }
 
@@ -899,7 +998,7 @@ const server = http.createServer(async (request, response) => {
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
           existingStatus: existingRecord?.status || "missing",
         });
-        sendJson(response, 409, { error: "This order is already being processed. Please wait a moment." });
+        sendJson(request, response, 409, { error: "This order is already being processed. Please wait a moment." });
         return;
       }
 
@@ -910,7 +1009,7 @@ const server = http.createServer(async (request, response) => {
           userId: auth.user.id,
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
         });
-        sendJson(response, 409, { error: "Another order is already being created. Please try again." });
+        sendJson(request, response, 409, { error: "Another order is already being created. Please try again." });
         return;
       }
 
@@ -939,7 +1038,7 @@ const server = http.createServer(async (request, response) => {
             statusCode: 200,
             payload,
           });
-          sendJson(response, 200, payload);
+          sendJson(request, response, 200, payload);
           return;
         }
 
@@ -961,7 +1060,7 @@ const server = http.createServer(async (request, response) => {
             statusCode: 400,
             payload,
           });
-          sendJson(response, 400, payload);
+          sendJson(request, response, 400, payload);
           return;
         }
 
@@ -985,7 +1084,7 @@ const server = http.createServer(async (request, response) => {
           if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
             await dataRepository.deleteIdempotencyRecord(auth.user.id, idempotencyKey);
             await dataRepository.deleteRequestById(requestRecord.id);
-            sendJson(response, 400, { error: "Request payment amount is invalid." });
+            sendJson(request, response, 400, { error: "Request payment amount is invalid." });
             return;
           }
 
@@ -994,6 +1093,7 @@ const server = http.createServer(async (request, response) => {
             requestId: requestRecord.id,
             requesterEmail: auth.user.email,
             description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
+            request,
           });
 
           requestRecord.paymentStatus = "pending";
@@ -1027,7 +1127,7 @@ const server = http.createServer(async (request, response) => {
             idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
             startCheckout,
           });
-          sendJson(response, 201, payload);
+          sendJson(request, response, 201, payload);
           return;
         }
 
@@ -1049,7 +1149,7 @@ const server = http.createServer(async (request, response) => {
           idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
           startCheckout,
         });
-        sendJson(response, 201, payload);
+        sendJson(request, response, 201, payload);
         return;
       } catch (error) {
         await dataRepository.deleteIdempotencyRecord(auth.user.id, idempotencyKey);
@@ -1075,32 +1175,32 @@ const server = http.createServer(async (request, response) => {
       const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
 
       if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
+        sendJson(request, response, 404, { error: "Request not found." });
         return;
       }
 
       if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
+        sendJson(request, response, 410, { error: "This request was removed by an admin." });
         return;
       }
 
       if (requestRecord.serviceType === "food" && !auth.user.foodSafetyVerified) {
-        sendJson(response, 403, { error: "Verify your campus email before accepting food deliveries." });
+        sendJson(request, response, 403, { error: "Verify your campus email before accepting food deliveries." });
         return;
       }
 
       if (requestRecord.userId === auth.user.id) {
-        sendJson(response, 400, { error: "You cannot accept your own request." });
+        sendJson(request, response, 400, { error: "You cannot accept your own request." });
         return;
       }
 
       if (requestRecord.status === "accepted" && requestRecord.acceptedBy && requestRecord.acceptedBy !== auth.user.id) {
-        sendJson(response, 409, { error: "This request was already accepted by another courier." });
+        sendJson(request, response, 409, { error: "This request was already accepted by another courier." });
         return;
       }
 
       if (requestRecord.status !== "open" && requestRecord.acceptedBy !== auth.user.id) {
-        sendJson(response, 400, { error: "This request is no longer open." });
+        sendJson(request, response, 400, { error: "This request is no longer open." });
         return;
       }
 
@@ -1115,7 +1215,7 @@ const server = http.createServer(async (request, response) => {
         createdAt: new Date().toISOString(),
       });
       await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;
     }
 
@@ -1127,22 +1227,22 @@ const server = http.createServer(async (request, response) => {
       const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
 
       if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
+        sendJson(request, response, 404, { error: "Request not found." });
         return;
       }
 
       if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
+        sendJson(request, response, 410, { error: "This request was removed by an admin." });
         return;
       }
 
       if (requestRecord.userId !== auth.user.id) {
-        sendJson(response, 403, { error: "Only the requester can mark this order as ready." });
+        sendJson(request, response, 403, { error: "Only the requester can mark this order as ready." });
         return;
       }
 
       if (requestRecord.serviceType !== "food") {
-        sendJson(response, 400, { error: "Only food requests can be marked ready." });
+        sendJson(request, response, 400, { error: "Only food requests can be marked ready." });
         return;
       }
 
@@ -1157,7 +1257,7 @@ const server = http.createServer(async (request, response) => {
         createdAt: new Date().toISOString(),
       });
       await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;
     }
 
@@ -1169,22 +1269,27 @@ const server = http.createServer(async (request, response) => {
       const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
 
       if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
+        sendJson(request, response, 404, { error: "Request not found." });
         return;
       }
 
       if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
+        sendJson(request, response, 410, { error: "This request was removed by an admin." });
         return;
       }
 
       if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(response, 403, { error: "Only the requester or assigned courier can complete this order." });
+        sendJson(request, response, 403, { error: "Only the requester or assigned courier can complete this order." });
         return;
       }
 
       if (requestRecord.status !== "accepted" || !requestRecord.acceptedBy) {
-        sendJson(response, 400, { error: "Only accepted orders can be completed." });
+        sendJson(request, response, 400, { error: "Only accepted orders can be completed." });
+        return;
+      }
+
+      if (requestRecord.paymentStatus !== "paid") {
+        sendJson(request, response, 400, { error: "Payment must be completed before this order can be closed." });
         return;
       }
 
@@ -1212,7 +1317,7 @@ const server = http.createServer(async (request, response) => {
         createdAt: now,
       });
       await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;
     }
 
@@ -1224,22 +1329,22 @@ const server = http.createServer(async (request, response) => {
       const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
 
       if (!requestRecord) {
-        sendJson(response, 404, { error: "Request not found." });
+        sendJson(request, response, 404, { error: "Request not found." });
         return;
       }
 
       if (requestRecord.moderationStatus === "removed") {
-        sendJson(response, 410, { error: "This request was removed by an admin." });
+        sendJson(request, response, 410, { error: "This request was removed by an admin." });
         return;
       }
 
       if (requestRecord.userId !== auth.user.id) {
-        sendJson(response, 403, { error: "Only the requester can cancel this order." });
+        sendJson(request, response, 403, { error: "Only the requester can cancel this order." });
         return;
       }
 
       if (!isActiveRequestStatus(requestRecord.status)) {
-        sendJson(response, 400, { error: "This order is already closed." });
+        sendJson(request, response, 400, { error: "This order is already closed." });
         return;
       }
 
@@ -1257,7 +1362,7 @@ const server = http.createServer(async (request, response) => {
         createdAt: now,
       });
       await writeData(auth.data);
-      sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;
     }
 
@@ -1266,8 +1371,9 @@ const server = http.createServer(async (request, response) => {
       response,
       url,
       requireUser,
-      sendJson,
-      readBody,
+      sendJson: (routeResponse, statusCode, payload, extraHeaders) =>
+        sendJson(request, routeResponse, statusCode, payload, extraHeaders),
+      readBody: (routeRequest = request) => readBody(routeRequest, getBodyLimitForRequest(routeRequest, url)),
       writeData,
       sanitizeUser,
       canAccessRequest,
@@ -1284,14 +1390,24 @@ const server = http.createServer(async (request, response) => {
     if (await handleAdminRoute(routeContext)) return;
     if (await handlePaymentsRoute(routeContext)) return;
 
-    sendJson(response, 404, { error: "Route not found." });
+    sendJson(request, response, 404, { error: "Route not found." });
   } catch (error) {
+    if (error?.statusCode === 413) {
+      sendJson(request, response, 413, { error: "Request body is too large." });
+      return;
+    }
+
+    if (error instanceof SyntaxError) {
+      sendJson(request, response, 400, { error: "Request body must be valid JSON." });
+      return;
+    }
+
     console.error("Unhandled backend error", {
       method: request.method,
       url: request.url,
       message: error instanceof Error ? error.message : String(error),
     });
-    sendJson(response, 500, {
+    sendJson(request, response, 500, {
       error: "Unexpected server error. Please try again.",
     });
   }

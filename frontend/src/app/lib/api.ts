@@ -2,7 +2,23 @@
 // Typed frontend API client and shared record types.
 // Pages should call backend routes through this file instead of building fetch calls inline.
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+function isLocalApiBase(value: string) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api\/?$/i.test(value);
+}
+
+function getApiBase() {
+  const configured = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  const isBrowserLocal =
+    typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+
+  if (configured && (!isLocalApiBase(configured) || isBrowserLocal)) {
+    return configured.replace(/\/$/, "");
+  }
+
+  return "/api";
+}
+
+const API_BASE = getApiBase();
 export const AUTH_EXPIRED_EVENT = "campus-connect-auth-expired";
 
 export type User = {

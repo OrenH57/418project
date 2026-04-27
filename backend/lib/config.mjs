@@ -58,8 +58,32 @@ export async function loadEnv() {
   }
 }
 
-export function getAppUrl() {
-  return process.env.PUBLIC_APP_URL || "http://127.0.0.1:4173";
+function normalizeOrigin(value) {
+  try {
+    return new URL(String(value || "").trim()).origin;
+  } catch {
+    return "";
+  }
+}
+
+function isLocalOrigin(origin) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+}
+
+export function getAppUrl(request) {
+  const configuredOrigin = normalizeOrigin(process.env.PUBLIC_APP_URL);
+  const requestOrigin = normalizeOrigin(request?.headers?.origin);
+  const forwardedProto = String(request?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
+  const forwardedHost = String(request?.headers?.["x-forwarded-host"] || request?.headers?.host || "")
+    .split(",")[0]
+    .trim();
+  const forwardedOrigin = forwardedHost ? normalizeOrigin(`${forwardedProto || "https"}://${forwardedHost}`) : "";
+
+  if (configuredOrigin && !(isLocalOrigin(configuredOrigin) && requestOrigin && !isLocalOrigin(requestOrigin))) {
+    return configuredOrigin;
+  }
+
+  return requestOrigin || forwardedOrigin || configuredOrigin || "http://127.0.0.1:4173";
 }
 
 export function getStripeSecretKey() {

@@ -3,6 +3,7 @@
 
 import crypto from "node:crypto";
 import { buildPaymentTotal, formatPaymentAmount, getStoredPaymentBase, parseOptionalTip } from "./paymentPolicy.mjs";
+import { truncateText, validateDataImage } from "./security.mjs";
 
 export async function handleMessagingRoute(context) {
   const {
@@ -60,7 +61,7 @@ export async function handleMessagingRoute(context) {
     const requestId = url.pathname.split("/")[3];
     const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
     const body = await readBody(request);
-    const text = String(body.text || "").trim();
+    const text = truncateText(body.text, 1000);
 
     if (!requestRecord) {
       sendJson(response, 404, { error: "Conversation not found." });
@@ -161,7 +162,7 @@ export async function handleRatingsRoute(context) {
 
     const body = await readBody(request);
     const ratingValue = Number(body.rating);
-    const comment = String(body.comment || "").trim();
+    const comment = truncateText(body.comment, 500);
     const isRequester = requestRecord.userId === auth.user.id;
     const targetUserId = isRequester ? requestRecord.acceptedBy : requestRecord.userId;
 
@@ -280,7 +281,7 @@ export async function handleProfileRoute(context) {
 
     const body = await readBody(request);
     auth.user.courierMode = Boolean(body.courierMode);
-    auth.user.bio = typeof body.bio === "string" ? body.bio : auth.user.bio;
+    auth.user.bio = typeof body.bio === "string" ? truncateText(body.bio, 500) : auth.user.bio;
     if (typeof body.notificationsEnabled === "boolean") {
       auth.user.notificationsEnabled = body.notificationsEnabled;
     }
@@ -288,8 +289,16 @@ export async function handleProfileRoute(context) {
       auth.user.courierOnline = body.courierOnline;
     }
     if (typeof body.ualbanyIdImage === "string") {
-      auth.user.ualbanyIdImage = body.ualbanyIdImage;
-      auth.user.ualbanyIdUploaded = Boolean(body.ualbanyIdImage.trim());
+      const imageResult = validateDataImage(body.ualbanyIdImage, {
+        required: false,
+        maxBytes: 3 * 1024 * 1024,
+      });
+      if (!imageResult.ok) {
+        sendJson(response, 400, { error: imageResult.error });
+        return true;
+      }
+      auth.user.ualbanyIdImage = imageResult.value;
+      auth.user.ualbanyIdUploaded = Boolean(imageResult.value);
     }
     await writeData(auth.data);
     sendJson(response, 200, { user: sanitizeUser(auth.user) });
@@ -332,7 +341,7 @@ export async function handleAdminRoute(context) {
     const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
     const body = await readBody(request);
     const action = String(body.action || "");
-    const reason = String(body.reason || "").trim();
+    const reason = truncateText(body.reason, 500);
 
     if (!requestRecord) {
       sendJson(response, 404, { error: "Request not found." });
@@ -374,7 +383,7 @@ export async function handleAdminRoute(context) {
     const targetUser = auth.data.users.find((entry) => entry.id === userId);
     const body = await readBody(request);
     const suspended = body.suspended === true;
-    const reason = String(body.reason || "").trim();
+    const reason = truncateText(body.reason, 500);
 
     if (!targetUser) {
       sendJson(response, 404, { error: "User not found." });
@@ -441,6 +450,11 @@ export async function handlePaymentsRoute(context) {
       return true;
     }
 
+    if (requestRecord.status !== "open" && requestRecord.status !== "accepted") {
+      sendJson(response, 400, { error: "Closed orders cannot be paid." });
+      return true;
+    }
+
     if (requestRecord.paymentStatus !== "paid" && requestRecord.paymentStatus !== "pending" && "tipAmount" in body) {
       const tipResult = parseOptionalTip(body.tipAmount);
       if (!tipResult.ok) {
@@ -476,6 +490,7 @@ export async function handlePaymentsRoute(context) {
       requestId,
       requesterEmail: auth.user.email,
       description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
+      request,
     });
 
     requestRecord.paymentStatus = "pending";

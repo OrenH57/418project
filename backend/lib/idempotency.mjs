@@ -19,7 +19,24 @@ export function createIdempotencyExpiry(now = new Date()) {
   return new Date(now.getTime() + IDEMPOTENCY_TTL_MS);
 }
 
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalize(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+        .map(([key, entryValue]) => [key, canonicalize(entryValue)]),
+    );
+  }
+
+  return value;
+}
+
 export function createRequestFingerprint(body) {
   const { idempotencyKey, ...fingerprintBody } = body && typeof body === "object" ? body : {};
-  return crypto.createHash("sha256").update(JSON.stringify(fingerprintBody)).digest("hex");
+  return crypto.createHash("sha256").update(JSON.stringify(canonicalize(fingerprintBody))).digest("hex");
 }

@@ -3,9 +3,9 @@
 
 import { getAppUrl, getStripeSecretKey } from "./config.mjs";
 
-export async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description }) {
+export async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description, request }) {
   const stripeSecretKey = getStripeSecretKey();
-  const appUrl = getAppUrl();
+  const appUrl = getAppUrl(request);
 
   if (!stripeSecretKey) {
     throw new Error("Stripe is not configured yet. Add STRIPE_SECRET_KEY in .env or .env.local.");
