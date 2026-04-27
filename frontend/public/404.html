@@ -8,18 +8,32 @@
   <body>
     <script>
       (function () {
-        var path = location.pathname;
-        var repoBase = path.split("/").slice(0, 2).join("/") || "";
-        var appPath = path.replace(repoBase, "") || "/";
+        var appRoutes = {
+          "": true,
+          "app": true,
+          "auth": true,
+          "request": true,
+          "driver-feed": true,
+          "messages": true,
+          "profile": true,
+          "help": true,
+          "rate": true,
+          "admin": true
+        };
+        var path = location.pathname || "/";
+        var firstSegment = path.split("/").filter(Boolean)[0] || "";
+        var basePath = firstSegment && !appRoutes[firstSegment] ? "/" + firstSegment : "";
+        var appPath = path.slice(basePath.length) || "/";
+
         sessionStorage.setItem(
           "campusconnect-gh-redirect",
           JSON.stringify({
-            path: repoBase + appPath,
+            path: basePath + appPath,
             search: location.search,
             hash: location.hash
           })
         );
-        location.replace(repoBase + "/");
+        location.replace((basePath || "") + "/");
       })();
     </script>
   </body>
