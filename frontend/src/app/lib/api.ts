@@ -144,6 +144,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
+      cache: options.cache ?? "no-store",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -264,7 +265,11 @@ export const api = {
     }, token);
   },
   getMessages(token: string, requestId: string) {
-    return request<{ request: RequestRecord; messages: MessageRecord[] }>(`/messages/${requestId}`, {}, token);
+    return request<{ request: RequestRecord; messages: MessageRecord[] }>(
+      `/messages/${requestId}?live=${Date.now()}`,
+      {},
+      token,
+    );
   },
   sendMessage(token: string, requestId: string, text: string) {
     return request<{ ok: true }>(`/messages/${requestId}`, {

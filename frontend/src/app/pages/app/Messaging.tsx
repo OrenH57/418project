@@ -66,6 +66,8 @@ export function Messaging() {
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [isSyncingPayment, setIsSyncingPayment] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [isRefreshingMessages, setIsRefreshingMessages] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [tipAmount, setTipAmount] = useState("");
@@ -97,21 +99,26 @@ export function Messaging() {
     try {
       if (!silent) {
         setIsLoadingMessages(true);
+      } else {
+        setIsRefreshingMessages(true);
       }
-      setLoadError("");
       const response = await api.getMessages(token, requestId);
       setMessages(response.messages);
       setRequestRecord(response.request);
+      setLoadError("");
+      setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load messages.";
-      setLoadError(message);
       if (!silent) {
+        setLoadError(message);
         toast.error(message);
       }
     } finally {
       messageRefreshLockRef.current = false;
       if (!silent) {
         setIsLoadingMessages(false);
+      } else {
+        setIsRefreshingMessages(false);
       }
     }
   }, [requestId, token]);
@@ -121,17 +128,17 @@ export function Messaging() {
   }, [loadMessages]);
 
   useEffect(() => {
-    if (!token || !requestId || !requestRecord || !shouldPollMessages) return;
+    if (!token || !requestId || !shouldPollMessages) return;
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       void loadMessages({ silent: true });
-    }, 3000);
+    }, 2000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [loadMessages, requestId, requestRecord, shouldPollMessages, token]);
+  }, [loadMessages, requestId, shouldPollMessages, token]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ block: "end" });
@@ -393,6 +400,21 @@ export function Messaging() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <Badge className="gap-1" variant={shouldPollMessages ? "secondary" : "outline"}>
+                    <span className={`h-2 w-2 rounded-full ${shouldPollMessages ? "bg-emerald-600" : "bg-[var(--muted)]"}`} />
+                    {isRefreshingMessages ? "Updating..." : shouldPollMessages ? "Live" : "Paused"}
+                  </Badge>
+                  {lastRefreshedAt ? (
+                    <Badge variant="outline">Synced {lastRefreshedAt}</Badge>
+                  ) : null}
+                  <Button
+                    disabled={isRefreshingMessages || isLoadingMessages}
+                    onClick={() => void loadMessages({ silent: true })}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRefreshingMessages ? "animate-spin" : ""}`} />
+                  </Button>
                   <Button onClick={() => setShowDetails((current) => !current)} size="sm" variant="outline">
                     {showDetails ? "Hide Details" : "Show Details"}
                   </Button>
