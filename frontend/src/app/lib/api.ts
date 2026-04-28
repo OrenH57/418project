@@ -81,6 +81,7 @@ export type RequestRecord = {
 };
 
 export type AdminOverview = {
+  listings: RequestRecord[];
   flaggedRequests: RequestRecord[];
   moderatedRequests: RequestRecord[];
   users: User[];

@@ -20,6 +20,7 @@ const {
 } = await import("../lib/requests.mjs");
 const { getDeliveryPricingForLocation } = await import("../lib/deliveryPricing.mjs");
 const { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } = await import("../lib/paymentPolicy.mjs");
+const { buildAdminOverview } = await import("../lib/admin.mjs");
 const { handlePaymentsRoute, handleRatingsRoute } = await import("../lib/routeGroups.mjs");
 const {
   IDEMPOTENCY_TTL_MS,
@@ -547,6 +548,40 @@ await runTest("decoratePublicCourierRequest hides sensitive order details", asyn
   assert.equal(publicRequest.orderScreenshot, "");
   assert.equal(publicRequest.payment, "4.99");
   assert.equal(publicRequest.pickup, "Starbucks");
+});
+
+await runTest("admin overview includes visible listings and excludes removed listings", async () => {
+  const data = {
+    users: [],
+    requests: [
+      {
+        id: "visible-listing",
+        requesterName: "Visible Requester",
+        pickup: "Baba's Pizza",
+        destination: "State Quad",
+        notes: "",
+        payment: "3.99",
+        status: "open",
+        moderationStatus: "clear",
+        createdAt: "2026-04-22T17:00:00.000Z",
+      },
+      {
+        id: "removed-listing",
+        requesterName: "Removed Requester",
+        pickup: "Starbucks",
+        destination: "Dutch Quad",
+        notes: "",
+        payment: "3.99",
+        status: "open",
+        moderationStatus: "removed",
+        createdAt: "2026-04-22T18:00:00.000Z",
+      },
+    ],
+  };
+
+  const overview = buildAdminOverview(data, (entry) => entry);
+  assert.deepEqual(overview.listings.map((entry) => entry.id), ["visible-listing"]);
+  assert.deepEqual(overview.moderatedRequests.map((entry) => entry.id), ["removed-listing"]);
 });
 
 await runTest("delivery pricing validates and calculates supported campus locations", async () => {

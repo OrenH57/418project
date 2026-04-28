@@ -47,6 +47,9 @@ export function buildAdminOverview(data, sanitizeUser) {
   );
 
   return {
+    listings: visibleRequests
+      .slice()
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     flaggedRequests: data.requests
       .filter((entry) => entry.moderationStatus === "flagged")
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),

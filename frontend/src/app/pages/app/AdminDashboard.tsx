@@ -3,7 +3,7 @@
 // Lets campus admins review flagged requests, remove unsafe listings, and suspend repeat offenders.
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChartNoAxesColumn, Shield, Trash2, UserX } from "lucide-react";
+import { AlertTriangle, ChartNoAxesColumn, ListChecks, Shield, Trash2, UserX } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -245,34 +245,68 @@ export function AdminDashboard() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Flagged moderation queue</CardTitle>
-              <CardDescription>
-                Keyword hits and manually reviewed requests show up here first.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading ? <p className="text-sm text-[var(--muted)]">Loading moderation queue...</p> : null}
-              {!isLoading && overview?.flaggedRequests.length ? (
-                overview.flaggedRequests.map((request) => (
-                  <RequestModerationCard
-                    disabled={Boolean(actionLockKey)}
-                    key={request.id}
-                    onClear={(entry) => void handleModeration(entry, "clear")}
-                    onFlag={(entry) => void handleModeration(entry, "flag")}
-                    onRemove={(entry) => void handleModeration(entry, "remove")}
-                    request={request}
-                  />
-                ))
-              ) : null}
-              {!isLoading && !overview?.flaggedRequests.length ? (
-                <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-                  No flagged requests right now.
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListChecks className="h-5 w-5 text-[var(--brand-maroon)]" />
+                  All listings
+                </CardTitle>
+                <CardDescription>
+                  Review every visible request and remove anything that should not stay public.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {isLoading ? <p className="text-sm text-[var(--muted)]">Loading listings...</p> : null}
+                {!isLoading && overview?.listings.length ? (
+                  overview.listings.map((request) => (
+                    <RequestModerationCard
+                      disabled={Boolean(actionLockKey)}
+                      key={request.id}
+                      onClear={(entry) => void handleModeration(entry, "clear")}
+                      onFlag={(entry) => void handleModeration(entry, "flag")}
+                      onRemove={(entry) => void handleModeration(entry, "remove")}
+                      request={request}
+                    />
+                  ))
+                ) : null}
+                {!isLoading && !overview?.listings.length ? (
+                  <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
+                    No visible listings right now.
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Flagged moderation queue</CardTitle>
+                <CardDescription>
+                  Keyword hits and manually reviewed requests show up here first.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {isLoading ? <p className="text-sm text-[var(--muted)]">Loading moderation queue...</p> : null}
+                {!isLoading && overview?.flaggedRequests.length ? (
+                  overview.flaggedRequests.map((request) => (
+                    <RequestModerationCard
+                      disabled={Boolean(actionLockKey)}
+                      key={request.id}
+                      onClear={(entry) => void handleModeration(entry, "clear")}
+                      onFlag={(entry) => void handleModeration(entry, "flag")}
+                      onRemove={(entry) => void handleModeration(entry, "remove")}
+                      request={request}
+                    />
+                  ))
+                ) : null}
+                {!isLoading && !overview?.flaggedRequests.length ? (
+                  <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
+                    No flagged requests right now.
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="space-y-6">
             <Card>
