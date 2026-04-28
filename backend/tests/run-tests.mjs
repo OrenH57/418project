@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "campus-connect-tests-"));
 process.env.CAMPUSCONNECT_DATA_DIR = tempRoot;
 process.env.CAMPUSCONNECT_DATA_FILE = path.join(tempRoot, "app-data.json");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const { hashPassword, verifyPassword, sanitizeUser } = await import("../lib/auth.mjs");
 const { dataFile, getAppUrl } = await import("../lib/config.mjs");
@@ -88,6 +90,18 @@ await runTest("sanitizeUser returns stable booleans and safe public fields", asy
     completedJobs: 2,
     earnings: 10,
   });
+});
+
+await runTest("vercel SPA rewrite covers app routes without swallowing API routes", async () => {
+  const vercelConfigPath = path.join(repoRoot, "vercel.json");
+  const vercelConfig = JSON.parse(await fs.readFile(vercelConfigPath, "utf8"));
+
+  assert.deepEqual(vercelConfig.rewrites, [
+    {
+      source: "/((?!api(?:/|$)).*)",
+      destination: "/index.html",
+    },
+  ]);
 });
 
 await runTest("readData normalizes older user placeholders and stored ID images", async () => {
