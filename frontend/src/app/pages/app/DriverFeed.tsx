@@ -2,7 +2,7 @@
 // Courier landing page. Shows open jobs, simple filters, and the main accept-job flow.
 // This file keeps the courier UX readable while relying on small helper functions for display logic.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MapPin,
@@ -37,9 +37,54 @@ export function DriverFeed() {
   const [filterType, setFilterType] = useState("all");
   const [sortBy, setSortBy] = useState("time");
   const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  const [isRefreshingRequests, setIsRefreshingRequests] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState("");
   const [acceptingRequestId, setAcceptingRequestId] = useState("");
   const knownOpenRequestIds = useRef<string[]>([]);
   const acceptingRequestRef = useRef("");
+
+  const refreshRequests = useCallback(async ({ silent = false } = {}) => {
+    if (!token || preferredView !== "courier") return;
+    if (acceptingRequestRef.current) return;
+
+    try {
+      if (silent) {
+        setIsRefreshingRequests(true);
+      } else {
+        setIsLoadingRequests(true);
+      }
+
+      const response = await api.getRequests(token, "courier");
+      setRequests(response.requests);
+      setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }));
+
+      const openRequests = response.requests.filter((request) => request.status === "open");
+      const openIds = openRequests.map((request) => request.id);
+
+      if (!knownOpenRequestIds.current.length) {
+        knownOpenRequestIds.current = openIds;
+        return;
+      }
+
+      const newOpenRequests = openRequests.filter((request) => !knownOpenRequestIds.current.includes(request.id));
+      knownOpenRequestIds.current = openIds;
+
+      if (newOpenRequests.length && user?.courierOnline && user.notificationsEnabled && canSendBrowserNotifications()) {
+        const newest = newOpenRequests[0];
+        sendBrowserNotification("New campus job available", {
+          body: `${newest.pickup} to ${newest.destination || "campus drop-off"} for $${newest.payment}`,
+        });
+      }
+    } catch (error) {
+      if (!silent) {
+        toast.error(error instanceof Error ? error.message : "Could not load courier feed.");
+      }
+    } finally {
+      setIsLoadingRequests(false);
+      setIsRefreshingRequests(false);
+    }
+  }, [preferredView, token, user?.courierOnline, user?.notificationsEnabled]);
 
   useEffect(() => {
     if (preferredView === "requester") {
@@ -47,56 +92,23 @@ export function DriverFeed() {
       return;
     }
 
-    async function loadRequests() {
-      if (!token) return;
-
-      try {
-        const response = await api.getRequests(token, "courier");
-        setRequests(response.requests);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not load courier feed.");
-      }
-    }
-
-    void loadRequests();
-  }, [navigate, preferredView, token]);
+    void refreshRequests();
+  }, [navigate, preferredView, refreshRequests]);
 
   useEffect(() => {
-    if (!token || preferredView !== "courier" || !user?.courierOnline) {
+    if (!token || preferredView !== "courier") {
       return;
     }
 
-    const intervalId = window.setInterval(async () => {
-      try {
-        const response = await api.getRequests(token, "courier");
-        setRequests(response.requests);
-
-        const openRequests = response.requests.filter((request) => request.status === "open");
-        const openIds = openRequests.map((request) => request.id);
-
-        if (!knownOpenRequestIds.current.length) {
-          knownOpenRequestIds.current = openIds;
-          return;
-        }
-
-        const newOpenRequests = openRequests.filter((request) => !knownOpenRequestIds.current.includes(request.id));
-        knownOpenRequestIds.current = openIds;
-
-        if (newOpenRequests.length && user.notificationsEnabled && canSendBrowserNotifications()) {
-          const newest = newOpenRequests[0];
-          sendBrowserNotification("New campus job available", {
-            body: `${newest.pickup} to ${newest.destination || "campus drop-off"} for $${newest.payment}`,
-          });
-        }
-      } catch {
-        // keep polling quiet in the background
-      }
-    }, 20000);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refreshRequests({ silent: true });
+    }, 3000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [preferredView, token, user?.courierOnline, user?.notificationsEnabled]);
+  }, [preferredView, refreshRequests, token]);
 
   const filteredRequests = useMemo(() => {
     return [...requests]
@@ -138,8 +150,7 @@ export function DriverFeed() {
     try {
       setAcceptingRequestId(requestId);
       await api.acceptRequest(token, requestId);
-      const refreshed = await api.getRequests(token, "courier");
-      setRequests(refreshed.requests);
+      await refreshRequests({ silent: true });
       toast.success("Request accepted. Open the chat to coordinate pickup.");
       navigate(`/messages/${requestId}`);
     } catch (error) {
@@ -166,10 +177,20 @@ export function DriverFeed() {
     <div className="min-h-screen bg-transparent">
       <div className="mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[var(--ink)]">Courier Jobs</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Browse open jobs, accept one, and message the student.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--ink)]">Courier Jobs</h1>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Browse open jobs, accept one, and message the student.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900" variant="outline">
+                {isRefreshingRequests ? "Refreshing" : "Live"}
+              </Badge>
+              {lastRefreshedAt ? <span>Updated {lastRefreshedAt}</span> : null}
+            </div>
+          </div>
         </div>
 
         {!user?.foodSafetyVerified ? (
@@ -348,10 +369,18 @@ export function DriverFeed() {
             );
           })}
 
-          {!filteredRequests.length ? (
+          {!isLoadingRequests && !filteredRequests.length ? (
             <Card>
               <CardContent className="p-8 text-center text-sm text-[var(--muted)]">
                 No matching jobs right now. Keep this page open if you are online for new campus runs.
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {isLoadingRequests ? (
+            <Card>
+              <CardContent className="p-8 text-center text-sm text-[var(--muted)]">
+                Loading courier jobs...
               </CardContent>
             </Card>
           ) : null}

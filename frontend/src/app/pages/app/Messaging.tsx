@@ -67,7 +67,6 @@ export function Messaging() {
   const [isSyncingPayment, setIsSyncingPayment] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isRefreshingMessages, setIsRefreshingMessages] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [tipAmount, setTipAmount] = useState("");
@@ -106,7 +105,6 @@ export function Messaging() {
       setMessages(response.messages);
       setRequestRecord(response.request);
       setLoadError("");
-      setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load messages.";
       if (!silent) {
@@ -430,9 +428,6 @@ export function Messaging() {
                     <span className={`h-2 w-2 rounded-full ${shouldPollMessages ? "bg-emerald-600" : "bg-[var(--muted)]"}`} />
                     {isRefreshingMessages ? "Updating..." : shouldPollMessages ? "Live" : "Paused"}
                   </Badge>
-                  {lastRefreshedAt ? (
-                    <Badge variant="outline">Synced {lastRefreshedAt}</Badge>
-                  ) : null}
                   <Button
                     disabled={isRefreshingMessages || isLoadingMessages}
                     onClick={() => void loadMessages({ silent: true })}
