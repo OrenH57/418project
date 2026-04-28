@@ -424,10 +424,6 @@ export function Messaging() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Badge className="gap-1" variant={shouldPollMessages ? "secondary" : "outline"}>
-                    <span className={`h-2 w-2 rounded-full ${shouldPollMessages ? "bg-emerald-600" : "bg-[var(--muted)]"}`} />
-                    {isRefreshingMessages ? "Updating..." : shouldPollMessages ? "Live" : "Paused"}
-                  </Badge>
                   <Button
                     disabled={isRefreshingMessages || isLoadingMessages}
                     onClick={() => void loadMessages({ silent: true })}
@@ -491,9 +487,6 @@ export function Messaging() {
                           {message.mine ? `You - ${myRoleLabel}` : `${message.senderName} - ${otherParticipantRole}`}
                         </p>
                         <p>{message.text}</p>
-                        <p className={`mt-1 text-xs ${message.mine ? "text-white/75" : "text-[var(--muted)]"}`}>
-                          {message.time}
-                        </p>
                       </div>
                     </div>
                   );
