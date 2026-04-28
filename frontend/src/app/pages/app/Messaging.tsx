@@ -1,7 +1,7 @@
 // File purpose:
 // Request-specific page for chat, payment, readiness, and completion.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -77,6 +77,7 @@ export function Messaging() {
   const sendLockRef = useRef(false);
   const checkoutLockRef = useRef(false);
   const paymentSyncLockRef = useRef(false);
+  const messageRefreshLockRef = useRef(false);
   const markFoodReadyLockRef = useRef(false);
   const completeRequestLockRef = useRef(false);
   const cancelRequestLockRef = useRef(false);
@@ -86,12 +87,17 @@ export function Messaging() {
     if (!requestRecord) return `Request #${requestId ?? "unknown"}`;
     return `${requestRecord.pickup} -> ${requestRecord.destination || "Campus drop-off"}`;
   }, [requestId, requestRecord]);
+  const shouldPollMessages = Boolean(requestRecord?.status === "open" || requestRecord?.status === "accepted");
 
-  async function loadMessages() {
+  const loadMessages = useCallback(async ({ silent = false } = {}) => {
     if (!token || !requestId) return;
+    if (messageRefreshLockRef.current) return;
+    messageRefreshLockRef.current = true;
 
     try {
-      setIsLoadingMessages(true);
+      if (!silent) {
+        setIsLoadingMessages(true);
+      }
       setLoadError("");
       const response = await api.getMessages(token, requestId);
       setMessages(response.messages);
@@ -99,15 +105,33 @@ export function Messaging() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load messages.";
       setLoadError(message);
-      toast.error(message);
+      if (!silent) {
+        toast.error(message);
+      }
     } finally {
-      setIsLoadingMessages(false);
+      messageRefreshLockRef.current = false;
+      if (!silent) {
+        setIsLoadingMessages(false);
+      }
     }
-  }
+  }, [requestId, token]);
 
   useEffect(() => {
     void loadMessages();
-  }, [requestId, token]);
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (!token || !requestId || !requestRecord || !shouldPollMessages) return;
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void loadMessages({ silent: true });
+    }, 3000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadMessages, requestId, requestRecord, shouldPollMessages, token]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ block: "end" });
