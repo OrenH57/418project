@@ -1,6 +1,6 @@
 # CampusConnect
 
-CampusConnect is a UAlbany-focused prototype for student food delivery and campus ride help. Students can request Campus Center food delivery after ordering in GET, request rides, accept courier jobs, and coordinate through in-app messaging.
+CampusConnect is a UAlbany-focused prototype for Campus Center food delivery, with ride help kept as a secondary flow. Students order food in GET first, request delivery in CampusConnect, pay the delivery fee, and coordinate the handoff with a student courier through in-app messaging.
 
 ## Project Structure
 
@@ -34,12 +34,12 @@ This project is now organized with clearer frontend and backend boundaries:
 ## What Is In The App
 
 - Campus Center food delivery requests
-- Campus ride requests
-- Courier-side request pickup and messaging
+- Secondary campus ride requests
+- Courier-side job pickup and handoff messaging
 - UAlbany verification flows
 - Admin moderation tools for flagged listings and suspensions
 
-Discount Dollars are still a placeholder.
+The core demo story is food delivery from request through courier chat, payment, completion, and rating.
 
 ## Running It Locally
 

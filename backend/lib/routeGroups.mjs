@@ -536,17 +536,24 @@ export async function handlePaymentsRoute(context) {
     }
 
     if (paymentState === "success") {
-      if (!checkoutSessionId) {
+      const sessionIdToVerify = checkoutSessionId || requestRecord.stripeCheckoutSessionId;
+
+      if (requestRecord.paymentStatus === "paid") {
+        sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
+        return true;
+      }
+
+      if (!sessionIdToVerify) {
         sendJson(response, 400, { error: "Missing Stripe checkout session." });
         return true;
       }
 
-      if (!requestRecord.stripeCheckoutSessionId || requestRecord.stripeCheckoutSessionId !== checkoutSessionId) {
+      if (!requestRecord.stripeCheckoutSessionId || requestRecord.stripeCheckoutSessionId !== sessionIdToVerify) {
         sendJson(response, 409, { error: "Stripe checkout session did not match this request." });
         return true;
       }
 
-      const checkoutSession = await getStripeCheckoutSession(checkoutSessionId);
+      const checkoutSession = await getStripeCheckoutSession(sessionIdToVerify);
 
       if (checkoutSession.payment_status !== "paid") {
         sendJson(response, 409, { error: "Stripe has not marked this checkout session as paid yet." });

@@ -340,7 +340,7 @@ export function RequestService() {
 
     const basePayment = serviceType === "food" ? selectedDeliveryLocation?.fee : MIN_PAYMENT_OFFER;
     if (!Number.isFinite(basePayment) || !basePayment || basePayment < MIN_PAYMENT_OFFER) {
-      stopSubmit("Delivery fee is missing for this request.");
+      stopSubmit(isFood ? "Delivery fee is missing for this request." : "Ride offer is missing for this request.");
       return;
     }
     const finalPayment = formatPaymentTotal(basePayment, tipValidation.amount);
@@ -423,7 +423,7 @@ export function RequestService() {
         <Card>
           <CardHeader>
             <CardTitle>{helperCopy.title}</CardTitle>
-            <CardDescription>Fill out a short request so another student can deliver or drive for you.</CardDescription>
+            <CardDescription>Fill out a short request so another student can help with delivery or a ride.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -749,7 +749,7 @@ export function RequestService() {
                       />
                       {isRide ? (
                         <p className="mt-1 text-xs text-[var(--muted)]">
-                          This now supports off-campus pickup into campus, which lines up with the milestone ride story.
+                          Use this for off-campus pickups heading back to campus.
                         </p>
                       ) : null}
                     </SectionCard>
@@ -816,10 +816,10 @@ export function RequestService() {
                     </div>
                   ) : (
                     <div>
-                      <Label>Delivery fee</Label>
+                      <Label>Ride offer</Label>
                       <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm text-[var(--muted)]">Fixed minimum offer</p>
+                          <p className="text-sm text-[var(--muted)]">Base ride offer</p>
                           <p className="text-2xl font-semibold text-[var(--ink)]">${formatDeliveryFee(MIN_PAYMENT_OFFER)}</p>
                         </div>
                       </div>
@@ -870,7 +870,15 @@ export function RequestService() {
               </SectionCard>
 
               <Button className="w-full" disabled={isSubmitting || isBootstrapping} size="lg" type="submit">
-                {isBootstrapping ? "Loading form..." : isSubmitting ? "Opening Stripe..." : isFood ? "Place Order And Pay" : "Place My Order"}
+                {isBootstrapping
+                  ? "Loading form..."
+                  : isSubmitting
+                    ? isFood
+                      ? "Opening Stripe..."
+                      : "Posting Request..."
+                    : isFood
+                      ? "Place Order And Pay"
+                      : "Post Ride Request"}
               </Button>
             </form>
           </CardContent>

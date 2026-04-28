@@ -427,7 +427,7 @@ export function Home() {
                       <div>
                         <p className="font-medium text-[var(--ink)]">{request.pickup}</p>
                         <p className="mt-1 text-sm text-[var(--muted)]">
-                          {request.destination || "Campus drop-off"} • ${request.payment}
+                          {request.destination || "Campus drop-off"} - ${request.payment}
                         </p>
                       </div>
                       <span className="rounded-full bg-[var(--surface-tint)] px-3 py-1 text-sm font-semibold text-[var(--brand-maroon)]">

@@ -113,9 +113,6 @@ export function DriverFeed() {
       });
   }, [filterType, requests, sortBy]);
 
-  const activeJobs = filteredRequests.filter((request) => request.status === "accepted").length;
-  const estimatedEarnings = filteredRequests.reduce((total, request) => total + Number.parseFloat(request.payment), 0);
-
   function getTypeIcon(type: string) {
     if (type === "food") return UtensilsCrossed;
     if (type === "ride") return Car;
@@ -151,6 +148,18 @@ export function DriverFeed() {
       acceptingRequestRef.current = "";
       setAcceptingRequestId("");
     }
+  }
+
+  function getPaymentTone(status: RequestRecord["paymentStatus"]) {
+    if (status === "paid") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+    if (status === "pending") return "border-amber-200 bg-amber-50 text-amber-900";
+    return "border-rose-200 bg-rose-50 text-rose-900";
+  }
+
+  function getPaymentLabel(status: RequestRecord["paymentStatus"]) {
+    if (status === "paid") return "Paid";
+    if (status === "pending") return "Pending";
+    return "Unpaid";
   }
 
   return (
@@ -193,29 +202,13 @@ export function DriverFeed() {
                   : "Go to Profile to turn on online mode if you want notifications for new jobs."}
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-tint)] px-4 py-2 text-sm font-medium text-[var(--ink)]">
-              <Bell className="h-4 w-4 text-[var(--brand-accent)]" />
-              {user?.courierOnline ? "Online for new jobs" : "Offline right now"}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-6 border-none bg-gradient-to-r from-[#fdf2dc] to-[#f3e8f6]">
-          <CardContent className="p-4">
-            <div className="flex justify-around text-center">
-              <div>
-                <p className="text-2xl font-bold text-[var(--brand-accent)]">{filteredRequests.length}</p>
-                <p className="text-xs text-[var(--muted)]">Open Jobs</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-tint)] px-4 py-2 text-sm font-medium text-[var(--ink)]">
+                <Bell className="h-4 w-4 text-[var(--brand-accent)]" />
+                {user?.courierOnline ? "Online for new jobs" : "Offline right now"}
               </div>
-              <div className="border-l border-[var(--border)]" />
-              <div>
-                <p className="text-2xl font-bold text-[var(--brand-maroon)]">{activeJobs}</p>
-                <p className="text-xs text-[var(--muted)]">Accepted</p>
-              </div>
-              <div className="border-l border-[var(--border)]" />
-              <div>
-                <p className="text-2xl font-bold text-[var(--brand-maroon)]">${estimatedEarnings.toFixed(0)}</p>
-                <p className="text-xs text-[var(--muted)]">Total Visible Pay</p>
+              <div className="inline-flex rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--muted)]">
+                {filteredRequests.filter((request) => request.status === "open").length} open now
               </div>
             </div>
           </CardContent>
@@ -252,17 +245,20 @@ export function DriverFeed() {
         <div className="space-y-4">
           {filteredRequests.map((request) => {
             const Icon = getTypeIcon(request.serviceType);
+            const isFoodLocked = request.serviceType === "food" && !user?.foodSafetyVerified;
+            const paymentStatus = request.paymentStatus || "unpaid";
+            const paymentTone = getPaymentTone(paymentStatus);
 
             return (
               <Card key={request.id} className="transition-shadow hover:shadow-lg">
                 <CardContent className="p-5">
-                  <div className="flex flex-col items-center gap-4 text-center lg:flex-row lg:items-start lg:text-left">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                     <div className={`${getTypeColor(request.serviceType)} shrink-0 rounded-full p-3`}>
                       <Icon className="h-6 w-6" />
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
                         <Avatar className="h-7 w-7">
                           <AvatarFallback>{request.requesterName[0]}</AvatarFallback>
                         </Avatar>
@@ -271,22 +267,26 @@ export function DriverFeed() {
                         <Badge className="text-xs" variant="secondary">
                           {request.status === "accepted" ? "Accepted" : "Open"}
                         </Badge>
+                        <Badge className={paymentTone} variant="outline">{getPaymentLabel(paymentStatus)}</Badge>
+                        {request.serviceType === "food" ? (
+                          <Badge variant="outline">{request.foodReady ? "Food ready" : "Details after accept"}</Badge>
+                        ) : null}
                       </div>
 
                       <div className="mb-3 space-y-1">
-                        <div className="flex items-start justify-center gap-2 text-sm lg:justify-start">
+                        <div className="flex items-start gap-2 text-sm">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-accent)]" />
                           <span className="text-[var(--ink)]">{request.pickup}</span>
                         </div>
                         {request.destination ? (
-                          <div className="flex items-start justify-center gap-2 text-sm lg:justify-start">
+                          <div className="flex items-start gap-2 text-sm">
                             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-maroon)]" />
                             <span className="text-[var(--ink)]">{request.destination}</span>
                           </div>
                         ) : null}
                       </div>
 
-                      <div className="flex flex-wrap justify-center gap-4 text-xs text-[var(--muted)] lg:justify-start">
+                      <div className="flex flex-wrap gap-4 text-xs text-[var(--muted)]">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {request.timeAgo}
@@ -309,7 +309,9 @@ export function DriverFeed() {
 
                       {request.serviceType === "food" ? (
                         <p className="mt-3 text-xs text-[var(--muted)]">
-                          Order number, items, screenshot, and contact details unlock after you accept.
+                          {isFoodLocked
+                            ? "Verify your campus email in Profile before accepting food deliveries."
+                            : "Order number, items, screenshot, and contact details unlock after you accept."}
                         </p>
                       ) : null}
 
@@ -334,10 +336,10 @@ export function DriverFeed() {
                     ) : (
                       <Button
                         className="shrink-0"
-                        disabled={Boolean(acceptingRequestId)}
+                        disabled={Boolean(acceptingRequestId) || isFoodLocked}
                         onClick={() => void handleAccept(request.id)}
                       >
-                        {acceptingRequestId === request.id ? "Accepting..." : "Accept Job"}
+                        {isFoodLocked ? "Verify First" : acceptingRequestId === request.id ? "Accepting..." : "Accept Job"}
                       </Button>
                     )}
                   </div>
@@ -345,6 +347,14 @@ export function DriverFeed() {
               </Card>
             );
           })}
+
+          {!filteredRequests.length ? (
+            <Card>
+              <CardContent className="p-8 text-center text-sm text-[var(--muted)]">
+                No matching jobs right now. Keep this page open if you are online for new campus runs.
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
     </div>

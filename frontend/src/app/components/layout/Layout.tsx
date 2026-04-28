@@ -3,7 +3,7 @@
 // Renders the top navigation, help entry, logout, and common page framing.
 
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bike, CircleHelp, LogOut, UserRound } from "lucide-react";
+import { Bike, CircleHelp, LogOut, Shield, UserRound } from "lucide-react";
 import { QuickRequestButton } from "./QuickRequestButton";
 import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
@@ -24,7 +24,7 @@ export function Layout() {
       <div className="ua-banner border-b border-[var(--border-strong)] text-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 text-xs tracking-[0.18em] uppercase">
           <span>University at Albany Student Delivery Network</span>
-          <span className="hidden text-white/75 sm:inline">Campus Center Pickup to Anywhere On Campus</span>
+          <span className="hidden text-white/75 sm:inline">Campus Center Pickup Across Campus</span>
         </div>
       </div>
 
@@ -45,6 +45,17 @@ export function Layout() {
           </button>
 
           <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 sm:flex sm:flex-wrap">
+            {user?.role === "admin" ? (
+              <Button
+                className="min-w-0 justify-center rounded-full px-3 sm:justify-start"
+                onClick={() => navigate("/admin")}
+                size="sm"
+                variant={isAdminPage ? "secondary" : "ghost"}
+              >
+                <Shield className="h-4 w-4 sm:mr-2" />
+                <span className="sr-only sm:not-sr-only">Admin</span>
+              </Button>
+            ) : null}
             <Button
               className="min-w-0 justify-center rounded-full px-3 sm:justify-start"
               onClick={() => navigate("/profile")}

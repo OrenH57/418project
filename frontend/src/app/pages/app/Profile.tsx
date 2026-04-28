@@ -289,7 +289,7 @@ export function Profile() {
               <p className="text-sm text-[var(--muted)]">{profile?.email}</p>
               <p className="text-sm text-[var(--muted)]">{profile?.phone || "No phone added yet"}</p>
               <Badge className="mt-3" variant="secondary">
-                {preferredView === "courier" ? "Courier side active" : "User side active"}
+                {preferredView === "courier" ? "Courier side active" : "Requester side active"}
               </Badge>
               <div className="mt-6 grid w-full grid-cols-2 gap-3 text-left">
                 <div className="rounded-xl bg-[var(--surface-tint)] p-4">

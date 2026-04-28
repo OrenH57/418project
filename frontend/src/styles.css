@@ -90,3 +90,41 @@ textarea:focus-visible {
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(18px);
 }
+
+.landing-action-bubbles {
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.landing-action-bubbles::before {
+  content: "";
+  position: absolute;
+  top: -70%;
+  left: -35%;
+  width: 34%;
+  height: 240%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  opacity: 0;
+  transform: rotate(20deg) translateX(-120%);
+  transition:
+    opacity 180ms ease,
+    transform 420ms ease;
+}
+
+.landing-action-bubbles:hover {
+  filter: saturate(1.08);
+}
+
+.landing-action-bubbles:hover::before {
+  opacity: 1;
+  transform: rotate(20deg) translateX(420%);
+}
+
+.landing-action-bubbles:active {
+  filter: saturate(1.16) brightness(1.04);
+  box-shadow:
+    0 6px 14px rgba(107, 54, 95, 0.2),
+    0 0 0 5px rgba(199, 162, 74, 0.16);
+}

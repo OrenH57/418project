@@ -31,13 +31,13 @@ type AuthContextValue = {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   loginWithMicrosoft: (input: {
     idToken: string;
     role: "requester" | "courier";
     phone?: string;
     ualbanyIdImage?: string;
-  }) => Promise<void>;
+  }) => Promise<User>;
   signup: (input: {
     name: string;
     email: string;
@@ -45,7 +45,7 @@ type AuthContextValue = {
     password: string;
     role: "requester" | "courier";
     ualbanyIdImage?: string;
-  }) => Promise<void>;
+  }) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateLocalUser: (user: User) => void;
@@ -184,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Authentication changed. Please try again.");
         }
         logoutPreviousSession(previousToken, response.token);
+        return response.user;
       },
       async loginWithMicrosoft(input) {
         const { generation, previousToken } = beginAuthAttempt();
@@ -192,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Authentication changed. Please try again.");
         }
         logoutPreviousSession(previousToken, response.token);
+        return response.user;
       },
       async signup(input) {
         const { generation, previousToken } = beginAuthAttempt();
@@ -200,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Authentication changed. Please try again.");
         }
         logoutPreviousSession(previousToken, response.token);
+        return response.user;
       },
       logout() {
         const currentToken = token;

@@ -10,12 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 const helpCards = [
   {
     title: "How to order food",
-    body: "Open GET Mobile, place the order first, then come back and press the big food request button.",
+    body: "Order in GET first, then request delivery here and use chat to coordinate pickup, payment, and handoff.",
     icon: UtensilsCrossed,
   },
   {
     title: "How to be a courier",
-    body: "Switch to the courier side, verify your campus email for food runs, and accept open requests.",
+    body: "Open the courier side, verify food delivery, accept a job, and use quick chat updates during the handoff.",
     icon: Bike,
   },
   {
@@ -45,8 +45,8 @@ export function HelpInfo() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-              CampusConnect is meant to be very simple:
-              choose which side should open first, then follow the big buttons on that side of the app.
+              CampusConnect is food-delivery first: requesters post Campus Center delivery jobs, couriers accept them,
+              and the message thread keeps pickup, payment, and drop-off details in one place.
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">

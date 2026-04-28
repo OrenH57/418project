@@ -25,8 +25,8 @@ const sideCopy = {
     description: "Sign in to request food delivery after ordering in GET, whether you are in your dorm, studying late, or working on campus.",
   },
   courier: {
-    badge: "Deliverer side",
-    title: "Become a deliverer",
+    badge: "Courier side",
+    title: "Become a courier",
     description: "Sign in to take nearby food delivery jobs and earn money helping students in dorms, libraries, and late-night campus spots.",
   },
 };
@@ -54,9 +54,10 @@ export function AuthPage() {
   const [busy, setBusy] = useState(false);
   const authSubmitLockRef = useRef(false);
   const currentSideCopy = sideCopy[entryView];
+  const getPostAuthPath = (nextUser: { role: string }) => nextUser.role === "admin" ? "/admin" : getDefaultPath(entryView);
 
   if (user) {
-    return <Navigate replace to={getDefaultPath(entryView)} />;
+    return <Navigate replace to={getPostAuthPath(user)} />;
   }
 
   async function handleIdImageChange(event: ChangeEvent<HTMLInputElement>) {
@@ -100,17 +101,17 @@ export function AuthPage() {
 
     try {
       if (mode === "login") {
-        await login(normalizedEmail, password);
+        const nextUser = await login(normalizedEmail, password);
         setStoredView(entryView);
         toast.success("Welcome back to CampusConnect.");
-        navigate(getDefaultPath(entryView), { replace: true });
+        navigate(getPostAuthPath(nextUser), { replace: true });
       } else {
         if (entryView === "courier" && !ualbanyIdImage) {
           toast.error("Upload a photo of your UAlbany ID before opening the courier side.");
           return;
         }
 
-        await signup({
+        const nextUser = await signup({
           name: normalizedName,
           email: normalizedEmail,
           phone: phone.trim(),
@@ -120,7 +121,7 @@ export function AuthPage() {
         });
         setStoredView(entryView);
         toast.success("Account created with your .edu email.");
-        navigate(getDefaultPath(entryView), { replace: true });
+        navigate(getPostAuthPath(nextUser), { replace: true });
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Authentication failed.");
@@ -151,7 +152,7 @@ export function AuthPage() {
         throw new Error("Microsoft sign-in finished without an ID token.");
       }
 
-      await loginWithMicrosoft({
+      const nextUser = await loginWithMicrosoft({
         idToken,
         role: entryView,
         phone: phone.trim() || undefined,
@@ -160,7 +161,7 @@ export function AuthPage() {
 
       setStoredView(entryView);
       toast.success("Signed in with your UAlbany Microsoft account.");
-      navigate(getDefaultPath(entryView), { replace: true });
+      navigate(getPostAuthPath(nextUser), { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Microsoft sign-in failed.");
     } finally {
@@ -193,7 +194,7 @@ export function AuthPage() {
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Bike className="mb-3 h-5 w-5" />
                 <p className="font-semibold">Courier mode</p>
-                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to accept nearby food runs and keep delivery moving.</p>
+                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to accept nearby food runs and help students across campus.</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
                 <Shield className="mb-3 h-5 w-5" />

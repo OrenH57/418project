@@ -20,7 +20,7 @@ const {
 } = await import("../lib/requests.mjs");
 const { getDeliveryPricingForLocation } = await import("../lib/deliveryPricing.mjs");
 const { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } = await import("../lib/paymentPolicy.mjs");
-const { handleRatingsRoute } = await import("../lib/routeGroups.mjs");
+const { handlePaymentsRoute, handleRatingsRoute } = await import("../lib/routeGroups.mjs");
 const {
   IDEMPOTENCY_TTL_MS,
   createIdempotencyExpiry,
@@ -577,6 +577,69 @@ await runTest("payment policy allows optional tips with cents", async () => {
   assert.equal(parseOptionalTip("3.505").ok, false);
   assert.equal(parseOptionalTip("-1").ok, false);
   assert.equal(formatPaymentAmount(buildPaymentTotal(3.99, 2.5)), "6.49");
+});
+
+await runTest("Stripe payment confirmation can sync a stored pending session", async () => {
+  const data = {
+    users: [
+      {
+        id: "payment-requester",
+        name: "Payment Requester",
+        email: "payment.requester@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "requester",
+      },
+    ],
+    sessions: [],
+    requests: [
+      {
+        id: "request-payment-pending",
+        userId: "payment-requester",
+        requesterName: "Payment Requester",
+        serviceType: "food",
+        pickup: "Baba's Pizza",
+        destination: "State Quad",
+        time: "Now",
+        payment: "3.99",
+        notes: "",
+        status: "accepted",
+        acceptedBy: "payment-courier",
+        paymentStatus: "pending",
+        paidAt: "",
+        stripeCheckoutSessionId: "cs_test_paid",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  };
+  const calls = [];
+  let wroteData = false;
+  const context = {
+    request: { method: "POST" },
+    response: {},
+    url: new URL("http://127.0.0.1:4174/api/payments/confirm"),
+    requireUser: async () => ({ data, user: data.users[0] }),
+    sendJson: (_response, statusCode, payload) => calls.push({ statusCode, payload }),
+    readBody: async () => ({ requestId: "request-payment-pending", paymentState: "success" }),
+    writeData: async () => {
+      wroteData = true;
+    },
+    decorateRequest: (requestRecord) => requestRecord,
+    getStripeCheckoutSession: async (sessionId) => {
+      assert.equal(sessionId, "cs_test_paid");
+      return { payment_status: "paid" };
+    },
+  };
+
+  assert.equal(await handlePaymentsRoute(context), true);
+  assert.equal(wroteData, true);
+  assert.equal(data.requests[0].paymentStatus, "paid");
+  assert.ok(data.requests[0].paidAt);
+  assert.equal(data.messages["request-payment-pending"][0].text, "Payment was completed in Stripe Checkout.");
+  assert.equal(calls[0].statusCode, 200);
+  assert.equal(calls[0].payload.request.paymentStatus, "paid");
 });
 
 await runTest("minimum payment plus tip keeps the base price locked", async () => {

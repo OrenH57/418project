@@ -2,11 +2,58 @@
 // Central route table for the frontend.
 // Defines protected pages, redirects, and router-level error handling.
 
+import type { ComponentType } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { RouteError } from "./pages";
 import { Layout, ProtectedRoute } from "./components";
 
+function protectedPage(path: string, lazy: () => Promise<{ Component: ComponentType }>) {
+  return {
+    path,
+    errorElement: <RouteError />,
+    Component: ProtectedRoute,
+    children: [
+      {
+        Component: Layout,
+        children: [{ index: true, lazy }],
+      },
+    ],
+  };
+}
+
 export const router = createBrowserRouter([
+  protectedPage("/app", async () => {
+    const { Home } = await import("./pages/app/Home");
+    return { Component: Home };
+  }),
+  protectedPage("/request", async () => {
+    const { RequestService } = await import("./pages/app/RequestService");
+    return { Component: RequestService };
+  }),
+  protectedPage("/driver-feed", async () => {
+    const { DriverFeed } = await import("./pages/app/DriverFeed");
+    return { Component: DriverFeed };
+  }),
+  protectedPage("/messages/:requestId", async () => {
+    const { Messaging } = await import("./pages/app/Messaging");
+    return { Component: Messaging };
+  }),
+  protectedPage("/profile", async () => {
+    const { Profile } = await import("./pages/app/Profile");
+    return { Component: Profile };
+  }),
+  protectedPage("/help", async () => {
+    const { HelpInfo } = await import("./pages/app/HelpInfo");
+    return { Component: HelpInfo };
+  }),
+  protectedPage("/rate/:requestId", async () => {
+    const { Ratings } = await import("./pages/app/Ratings");
+    return { Component: Ratings };
+  }),
+  protectedPage("/admin", async () => {
+    const { AdminDashboard } = await import("./pages/app/AdminDashboard");
+    return { Component: AdminDashboard };
+  }),
   {
     path: "/",
     lazy: async () => {
@@ -22,76 +69,6 @@ export const router = createBrowserRouter([
       return { Component: AuthPage };
     },
     errorElement: <RouteError />,
-  },
-  {
-    errorElement: <RouteError />,
-    Component: ProtectedRoute,
-    children: [
-      {
-        path: "/",
-        errorElement: <RouteError />,
-        Component: Layout,
-        children: [
-          {
-            path: "app",
-            lazy: async () => {
-              const { Home } = await import("./pages/app/Home");
-              return { Component: Home };
-            },
-          },
-          {
-            path: "request",
-            lazy: async () => {
-              const { RequestService } = await import("./pages/app/RequestService");
-              return { Component: RequestService };
-            },
-          },
-          {
-            path: "driver-feed",
-            lazy: async () => {
-              const { DriverFeed } = await import("./pages/app/DriverFeed");
-              return { Component: DriverFeed };
-            },
-          },
-          {
-            path: "messages/:requestId",
-            lazy: async () => {
-              const { Messaging } = await import("./pages/app/Messaging");
-              return { Component: Messaging };
-            },
-          },
-          {
-            path: "profile",
-            lazy: async () => {
-              const { Profile } = await import("./pages/app/Profile");
-              return { Component: Profile };
-            },
-          },
-          {
-            path: "help",
-            lazy: async () => {
-              const { HelpInfo } = await import("./pages/app/HelpInfo");
-              return { Component: HelpInfo };
-            },
-          },
-          {
-            path: "rate/:requestId",
-            lazy: async () => {
-              const { Ratings } = await import("./pages/app/Ratings");
-              return { Component: Ratings };
-            },
-          },
-          {
-            path: "admin",
-            lazy: async () => {
-              const { AdminDashboard } = await import("./pages/app/AdminDashboard");
-              return { Component: AdminDashboard };
-            },
-          },
-          { path: "*", element: <Navigate replace to="/app" /> },
-        ],
-      },
-    ],
   },
   { path: "*", element: <Navigate replace to="/" /> },
 ]);
