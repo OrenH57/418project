@@ -17,6 +17,7 @@ const {
   expireTimedOutRequests,
   findRecentDuplicateRequest,
   findRecentSimilarSubmission,
+  getCampusSnapshot,
 } = await import("../lib/requests.mjs");
 const { getDeliveryPricingForLocation } = await import("../lib/deliveryPricing.mjs");
 const { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } = await import("../lib/paymentPolicy.mjs");
@@ -477,6 +478,68 @@ await runTest("findRecentSimilarSubmission catches rapid retry with same core or
 
   assert.equal(rapidRetry?.id, "request-existing-rapid");
   assert.equal(laterRetry, undefined);
+});
+
+await runTest("duplicate detection ignores admin removed active orders", async () => {
+  const removedRequest = {
+    id: "request-removed-duplicate",
+    userId: "user-requester-1",
+    serviceType: "food",
+    pickup: "Baba's Pizza",
+    destination: "State Quad",
+    deliveryLocationId: "state",
+    time: "Now",
+    payment: "3.99",
+    notes: "same order",
+    orderEta: "",
+    orderScreenshot: "",
+    status: "open",
+    moderationStatus: "removed",
+    createdAt: new Date().toISOString(),
+  };
+
+  const duplicate = findRecentDuplicateRequest(
+    [removedRequest],
+    { ...removedRequest, id: "request-new-after-removal", moderationStatus: "clear" },
+  );
+
+  assert.equal(duplicate, undefined);
+});
+
+await runTest("campus snapshot excludes admin removed requests", async () => {
+  const data = {
+    users: [{ id: "courier-1", courierOnline: true }],
+    requests: [
+      {
+        id: "visible-request",
+        userId: "user-requester-1",
+        serviceType: "food",
+        pickup: "Baba's Pizza",
+        destination: "State Quad",
+        payment: "3.99",
+        status: "open",
+        moderationStatus: "clear",
+        createdAt: "2026-04-22T17:00:00.000Z",
+        notes: "",
+      },
+      {
+        id: "removed-request",
+        userId: "user-requester-1",
+        serviceType: "food",
+        pickup: "Starbucks",
+        destination: "Dutch Quad",
+        payment: "5.99",
+        status: "open",
+        moderationStatus: "removed",
+        createdAt: "2026-04-22T18:00:00.000Z",
+        notes: "",
+      },
+    ],
+  };
+
+  const snapshot = getCampusSnapshot(data, "user-requester-1");
+  assert.equal(snapshot.openRequests, 1);
+  assert.deepEqual(snapshot.myRecentRequests.map((request) => request.id), ["visible-request"]);
 });
 
 await runTest("expireTimedOutRequests deletes stale open orders only", async () => {

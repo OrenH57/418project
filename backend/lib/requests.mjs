@@ -12,6 +12,10 @@ export function isClosedRequestStatus(status) {
   return ["completed", "cancelled", "expired"].includes(status);
 }
 
+export function isVisibleRequest(requestRecord) {
+  return requestRecord?.moderationStatus !== "removed";
+}
+
 export function getTimedOutRequestIds(data, now = new Date()) {
   const nowMs = now.getTime();
   const timedOutRequestIds = [];
@@ -128,6 +132,7 @@ export function findRecentDuplicateRequest(requests, candidate) {
 
   return requests.find((entry) => {
     if (entry.userId !== candidate.userId) return false;
+    if (!isVisibleRequest(entry)) return false;
     if (!isActiveRequestStatus(entry.status)) return false;
 
     const entryCreatedAt = new Date(entry.createdAt).getTime();
@@ -161,6 +166,7 @@ export function findRecentSimilarSubmission(requests, candidate) {
 
   return requests.find((entry) => {
     if (entry.userId !== candidate.userId) return false;
+    if (!isVisibleRequest(entry)) return false;
     if (!isActiveRequestStatus(entry.status)) return false;
 
     const entryCreatedAt = new Date(entry.createdAt).getTime();
@@ -200,7 +206,8 @@ export function getZoneFromDestination(destination = "") {
 }
 
 export function getCampusSnapshot(data, currentUserId) {
-  const openRequests = data.requests.filter((entry) => entry.status === "open");
+  const visibleRequests = data.requests.filter(isVisibleRequest);
+  const openRequests = visibleRequests.filter((entry) => entry.status === "open");
   const onlineCouriers = data.users.filter((entry) => entry.courierOnline).length;
   const avgPayout =
     openRequests.length > 0
@@ -221,7 +228,7 @@ export function getCampusSnapshot(data, currentUserId) {
   const busiestZone =
     [...zoneCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || "Campus Center";
 
-  const myRecentRequests = data.requests
+  const myRecentRequests = visibleRequests
     .filter((entry) => entry.userId === currentUserId)
     .slice()
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))

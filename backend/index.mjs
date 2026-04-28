@@ -29,6 +29,7 @@ import {
   findRecentSimilarSubmission,
   getCampusSnapshot,
   isActiveRequestStatus,
+  isVisibleRequest,
 } from "./lib/requests.mjs";
 import { verifyMicrosoftIdToken } from "./lib/microsoftAuth.mjs";
 import { createStripeCheckoutSession, getStripeCheckoutSession } from "./lib/payments.mjs";
@@ -759,6 +760,7 @@ const server = http.createServer(async (request, response) => {
         deliveryLocations: DELIVERY_LOCATIONS,
         requests: auth.data.requests
           .filter((entry) => entry.userId === auth.user.id)
+          .filter(isVisibleRequest)
           .map((entry) => decorateRequest(entry, auth.data)),
         campusSnapshot: getCampusSnapshot(auth.data, auth.user.id),
       });

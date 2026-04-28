@@ -168,10 +168,18 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
       if (index >= 0) orderLocks.splice(index, 1);
     },
     async findActiveRequestsByUser(userId) {
-      return clone(state.requests.filter((request) => request.userId === userId && ["open", "accepted"].includes(request.status)));
+      return clone(state.requests.filter((request) =>
+        request.userId === userId &&
+        request.moderationStatus !== "removed" &&
+        ["open", "accepted"].includes(request.status)
+      ));
     },
     async countActiveRequestsByUser(userId) {
-      return state.requests.filter((request) => request.userId === userId && ["open", "accepted"].includes(request.status)).length;
+      return state.requests.filter((request) =>
+        request.userId === userId &&
+        request.moderationStatus !== "removed" &&
+        ["open", "accepted"].includes(request.status)
+      ).length;
     },
     async insertRequest(requestRecord) {
       state.requests.push(clone(requestRecord));
@@ -426,10 +434,18 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
       await collections.orderCreationLocks.deleteOne({ userId });
     },
     async findActiveRequestsByUser(userId) {
-      return await collections.requests.find({ userId, status: { $in: ["open", "accepted"] } }).toArray();
+      return await collections.requests.find({
+        userId,
+        moderationStatus: { $ne: "removed" },
+        status: { $in: ["open", "accepted"] },
+      }).toArray();
     },
     async countActiveRequestsByUser(userId) {
-      return await collections.requests.countDocuments({ userId, status: { $in: ["open", "accepted"] } });
+      return await collections.requests.countDocuments({
+        userId,
+        moderationStatus: { $ne: "removed" },
+        status: { $in: ["open", "accepted"] },
+      });
     },
     async insertRequest(requestRecord) {
       await collections.requests.insertOne(requestRecord);
