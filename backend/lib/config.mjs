@@ -66,12 +66,34 @@ function normalizeOrigin(value) {
   }
 }
 
+function normalizeAppUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.origin}${pathname === "/" ? "" : pathname}`;
+  } catch {
+    return "";
+  }
+}
+
 function isLocalOrigin(origin) {
   return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
 }
 
+function normalizeBasePath(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed === "/") return "";
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function withBasePath(origin, basePath) {
+  if (!origin) return "";
+  return `${origin}${normalizeBasePath(basePath)}`;
+}
+
 export function getAppUrl(request) {
-  const configuredOrigin = normalizeOrigin(process.env.PUBLIC_APP_URL);
+  const configuredAppUrl = normalizeAppUrl(process.env.PUBLIC_APP_URL);
+  const configuredOrigin = normalizeOrigin(configuredAppUrl);
   const requestOrigin = normalizeOrigin(request?.headers?.origin);
   const forwardedProto = String(request?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
   const forwardedHost = String(request?.headers?.["x-forwarded-host"] || request?.headers?.host || "")
@@ -80,10 +102,17 @@ export function getAppUrl(request) {
   const forwardedOrigin = forwardedHost ? normalizeOrigin(`${forwardedProto || "https"}://${forwardedHost}`) : "";
 
   if (configuredOrigin && !(isLocalOrigin(configuredOrigin) && requestOrigin && !isLocalOrigin(requestOrigin))) {
-    return configuredOrigin;
+    return configuredAppUrl;
   }
 
-  return requestOrigin || forwardedOrigin || configuredOrigin || "http://127.0.0.1:4173";
+  const basePath = process.env.VITE_BASE_PATH;
+
+  return (
+    withBasePath(requestOrigin, basePath) ||
+    withBasePath(forwardedOrigin, basePath) ||
+    configuredAppUrl ||
+    "http://127.0.0.1:4173"
+  );
 }
 
 export function getStripeSecretKey() {

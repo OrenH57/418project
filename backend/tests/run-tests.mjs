@@ -8,7 +8,7 @@ process.env.CAMPUSCONNECT_DATA_DIR = tempRoot;
 process.env.CAMPUSCONNECT_DATA_FILE = path.join(tempRoot, "app-data.json");
 
 const { hashPassword, verifyPassword, sanitizeUser } = await import("../lib/auth.mjs");
-const { dataFile } = await import("../lib/config.mjs");
+const { dataFile, getAppUrl } = await import("../lib/config.mjs");
 const { dataRepository, readData } = await import("../lib/store.mjs");
 const { createMemoryDataAdapter } = await import("../lib/data/adapters.mjs");
 const { createDataRepository } = await import("../lib/data/repository.mjs");
@@ -577,6 +577,50 @@ await runTest("payment policy allows optional tips with cents", async () => {
   assert.equal(parseOptionalTip("3.505").ok, false);
   assert.equal(parseOptionalTip("-1").ok, false);
   assert.equal(formatPaymentAmount(buildPaymentTotal(3.99, 2.5)), "6.49");
+});
+
+await runTest("app URL preserves configured deployment path for Stripe redirects", async () => {
+  const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
+  process.env.PUBLIC_APP_URL = "https://example.com/418project/";
+
+  try {
+    assert.equal(
+      getAppUrl({ headers: { origin: "https://example.com" } }),
+      "https://example.com/418project",
+    );
+  } finally {
+    if (previousPublicAppUrl === undefined) {
+      delete process.env.PUBLIC_APP_URL;
+    } else {
+      process.env.PUBLIC_APP_URL = previousPublicAppUrl;
+    }
+  }
+});
+
+await runTest("app URL applies Vite base path when PUBLIC_APP_URL is not set", async () => {
+  const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
+  const previousBasePath = process.env.VITE_BASE_PATH;
+  delete process.env.PUBLIC_APP_URL;
+  process.env.VITE_BASE_PATH = "/418project/";
+
+  try {
+    assert.equal(
+      getAppUrl({ headers: { origin: "https://example.com" } }),
+      "https://example.com/418project",
+    );
+  } finally {
+    if (previousPublicAppUrl === undefined) {
+      delete process.env.PUBLIC_APP_URL;
+    } else {
+      process.env.PUBLIC_APP_URL = previousPublicAppUrl;
+    }
+
+    if (previousBasePath === undefined) {
+      delete process.env.VITE_BASE_PATH;
+    } else {
+      process.env.VITE_BASE_PATH = previousBasePath;
+    }
+  }
 });
 
 await runTest("Stripe payment confirmation can sync a stored pending session", async () => {
