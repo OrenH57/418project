@@ -96,7 +96,8 @@ export function RequestService() {
   const navigate = useNavigate();
   const { token } = useAuth();
   const [searchParams] = useSearchParams();
-  const typeFromUrl = searchParams.get("type") || "food";
+  const requestedType = searchParams.get("type") || "food";
+  const typeFromUrl = serviceTypes.some((service) => service.value === requestedType) ? requestedType : "food";
   const pickupFromUrl = searchParams.get("pickup") || "";
   const destinationFromUrl = searchParams.get("destination") || "";
   const notesFromUrl = searchParams.get("notes") || "";
@@ -193,7 +194,7 @@ export function RequestService() {
 
       setRestaurants(response.restaurants);
 
-      if (!pickupFromUrl && response.restaurants[0]) {
+      if (serviceType === "food" && !pickupFromUrl && response.restaurants[0]) {
         setPickup((currentPickup) => currentPickup || response.restaurants[0]);
       }
     }
@@ -216,7 +217,27 @@ export function RequestService() {
     return () => {
       isActive = false;
     };
-  }, [pickupFromUrl, token]);
+  }, [pickupFromUrl, serviceType, token]);
+
+  function handleServiceTypeChange(nextServiceType: string) {
+    setServiceType(nextServiceType);
+    setDestination("");
+    setTipAmount("");
+
+    if (nextServiceType === "food") {
+      setPickup((currentPickup) => currentPickup || restaurants[0] || "");
+      setRidePickupArea("");
+      setRideDestinationArea("");
+      return;
+    }
+
+    setPickup("");
+    setHousingArea("");
+    setHousingBuilding("");
+    setHousingFloor("");
+    setHousingDetails("");
+    setHasOrderedInGet(true);
+  }
 
   useEffect(() => {
     if (serviceType !== "food" && serviceType !== "ride") {
@@ -443,7 +464,7 @@ export function RequestService() {
                       active={serviceType === type.value}
                       key={type.value}
                       label={type.label}
-                      onClick={() => setServiceType(type.value)}
+                      onClick={() => handleServiceTypeChange(type.value)}
                       suggestedPrice={type.suggestedPrice}
                     />
                   ))}

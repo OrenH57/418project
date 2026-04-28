@@ -37,13 +37,22 @@ const demoAccounts = [
   { role: "Admin", email: "jordan.reyes@albany.edu", password: "demo1234" },
 ];
 
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/auth")) {
+    return "";
+  }
+
+  return value;
+}
+
 export function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { instance } = useMsal();
   const { user, login, loginWithMicrosoft, signup } = useAuth();
   const sideParam = searchParams.get("side");
-  const initialEntryView = sideParam === "courier" ? "courier" : "requester";
+  const safeNextPath = getSafeNextPath(searchParams.get("next"));
+  const initialEntryView = sideParam === "courier" || safeNextPath.startsWith("/driver-feed") ? "courier" : "requester";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -54,7 +63,8 @@ export function AuthPage() {
   const [busy, setBusy] = useState(false);
   const authSubmitLockRef = useRef(false);
   const currentSideCopy = sideCopy[entryView];
-  const getPostAuthPath = (nextUser: { role: string }) => nextUser.role === "admin" ? "/admin" : getDefaultPath(entryView);
+  const getPostAuthPath = (nextUser: { role: string }) =>
+    nextUser.role === "admin" ? "/admin" : safeNextPath || getDefaultPath(entryView);
 
   if (user) {
     return <Navigate replace to={getPostAuthPath(user)} />;

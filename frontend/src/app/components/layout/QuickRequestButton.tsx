@@ -59,6 +59,11 @@ export function QuickRequestButton() {
     navigate(`/request?${params.toString()}`);
   };
 
+  function handleServiceTypeChange(nextServiceType: string) {
+    setServiceType(nextServiceType);
+    setPickup(nextServiceType === "food" ? restaurants[0] || "" : "");
+  }
+
   return (
     <>
       <button
@@ -84,7 +89,7 @@ export function QuickRequestButton() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="quick-service">Service Type</Label>
-            <Select value={serviceType} onValueChange={setServiceType}>
+            <Select value={serviceType} onValueChange={handleServiceTypeChange}>
               <SelectTrigger id="quick-service">
                 <SelectValue placeholder="Select service" />
               </SelectTrigger>

@@ -2,10 +2,11 @@
 // Route guard for authenticated pages.
 // Waits for auth to load, then either renders the protected layout or redirects to login.
 
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 export function ProtectedRoute() {
+  const location = useLocation();
   const { loading, user } = useAuth();
 
   if (loading) {
@@ -19,7 +20,8 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
-    return <Navigate replace to="/" />;
+    const nextPath = `${location.pathname}${location.search}`;
+    return <Navigate replace to={`/auth?next=${encodeURIComponent(nextPath)}`} />;
   }
 
   return <Outlet />;

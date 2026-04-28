@@ -6,6 +6,8 @@ import type { ComponentType } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { RouteError } from "./pages";
 import { Layout, ProtectedRoute } from "./components";
+import { useAuth } from "./context/AuthContext";
+import { getDefaultPath, getStoredView } from "./lib/viewMode";
 
 const routerBasename = import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -41,6 +43,11 @@ function protectedPage(path: string, lazy: () => Promise<{ Component: ComponentT
       },
     ],
   };
+}
+
+function CatchAllRedirect() {
+  const { user } = useAuth();
+  return <Navigate replace to={user ? getDefaultPath(getStoredView()) : "/auth"} />;
 }
 
 export const router = createBrowserRouter(
@@ -93,7 +100,7 @@ export const router = createBrowserRouter(
       }),
       errorElement: <RouteError />,
     },
-    { path: "*", element: <Navigate replace to="/" /> },
+    { path: "*", element: <CatchAllRedirect /> },
   ],
   { basename: routerBasename },
 );
