@@ -9,6 +9,26 @@ import { Layout, ProtectedRoute } from "./components";
 
 const routerBasename = import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function isStaleRouteChunkError(error: unknown) {
+  return (
+    error instanceof Error &&
+    /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+      error.message,
+    )
+  );
+}
+
+async function loadRoute(lazy: () => Promise<{ Component: ComponentType }>) {
+  try {
+    return await lazy();
+  } catch (error) {
+    if (isStaleRouteChunkError(error)) {
+      window.location.reload();
+    }
+    throw error;
+  }
+}
+
 function protectedPage(path: string, lazy: () => Promise<{ Component: ComponentType }>) {
   return {
     path,
@@ -17,7 +37,7 @@ function protectedPage(path: string, lazy: () => Promise<{ Component: ComponentT
     children: [
       {
         Component: Layout,
-        children: [{ index: true, lazy }],
+        children: [{ index: true, lazy: () => loadRoute(lazy) }],
       },
     ],
   };
@@ -59,18 +79,18 @@ export const router = createBrowserRouter(
     }),
     {
       path: "/",
-      lazy: async () => {
+      lazy: () => loadRoute(async () => {
         const { LandingPage } = await import("./pages/public/LandingPage");
         return { Component: LandingPage };
-      },
+      }),
       errorElement: <RouteError />,
     },
     {
       path: "/auth",
-      lazy: async () => {
+      lazy: () => loadRoute(async () => {
         const { AuthPage } = await import("./pages/public/AuthPage");
         return { Component: AuthPage };
-      },
+      }),
       errorElement: <RouteError />,
     },
     { path: "*", element: <Navigate replace to="/" /> },

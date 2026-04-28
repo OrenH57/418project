@@ -101,7 +101,7 @@ export function Messaging() {
       } else {
         setIsRefreshingMessages(true);
       }
-      const response = await api.getMessages(token, requestId);
+      const response = await api.getMessages(token, requestId, { suppressAuthExpired: silent });
       setMessages(response.messages);
       setRequestRecord(response.request);
       setLoadError("");

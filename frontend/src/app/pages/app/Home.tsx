@@ -277,7 +277,7 @@ export function Home() {
 
     const intervalId = window.setInterval(async () => {
       try {
-        const response = await api.getRequests(token, "mine");
+        const response = await api.getRequests(token, "mine", { suppressAuthExpired: true });
         const activeRequests = response.requests.filter(isActiveRequest);
         setRequests(activeRequests);
 

@@ -20,6 +20,7 @@ function getApiBase() {
 
 const API_BASE = getApiBase();
 export const AUTH_EXPIRED_EVENT = "campus-connect-auth-expired";
+type ApiRequestOptions = RequestInit & { suppressAuthExpired?: boolean };
 
 export type User = {
   id: string;
@@ -144,16 +145,17 @@ export type DeliveryLocationPrice = {
   fee: number;
 };
 
-async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+async function request<T>(path: string, options: ApiRequestOptions = {}, token?: string): Promise<T> {
+  const { suppressAuthExpired = false, ...fetchOptions } = options;
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
-      cache: options.cache ?? "no-store",
-      ...options,
+      cache: fetchOptions.cache ?? "no-store",
+      ...fetchOptions,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers || {}),
+        ...(fetchOptions.headers || {}),
       },
     });
   } catch {
@@ -175,7 +177,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
       typeof payload.error === "string"
         ? payload.error
         : "Request failed.";
-    if (response.status === 401 && token) {
+    if (response.status === 401 && token && !suppressAuthExpired) {
       window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { message: errorMessage, token } }));
     }
     throw new Error(errorMessage);
@@ -236,8 +238,10 @@ export const api = {
       token,
     );
   },
-  getRequests(token: string, mode: "all" | "mine" | "courier") {
-    return request<{ requests: RequestRecord[] }>(`/requests?mode=${mode}`, {}, token);
+  getRequests(token: string, mode: "all" | "mine" | "courier", options: { suppressAuthExpired?: boolean } = {}) {
+    return request<{ requests: RequestRecord[] }>(`/requests?mode=${mode}`, {
+      suppressAuthExpired: options.suppressAuthExpired,
+    }, token);
   },
   createRequest(
     token: string,
@@ -268,10 +272,10 @@ export const api = {
       method: "POST",
     }, token);
   },
-  getMessages(token: string, requestId: string) {
+  getMessages(token: string, requestId: string, options: { suppressAuthExpired?: boolean } = {}) {
     return request<{ request: RequestRecord; messages: MessageRecord[] }>(
       `/messages/${requestId}?live=${Date.now()}`,
-      {},
+      { suppressAuthExpired: options.suppressAuthExpired },
       token,
     );
   },

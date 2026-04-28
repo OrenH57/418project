@@ -55,7 +55,7 @@ export function DriverFeed() {
         setIsLoadingRequests(true);
       }
 
-      const response = await api.getRequests(token, "courier");
+      const response = await api.getRequests(token, "courier", { suppressAuthExpired: silent });
       setRequests(response.requests);
       setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }));
 
