@@ -214,6 +214,22 @@ export function normalizeDataSnapshot(data) {
       request.foodReadyAt = "";
       changed = true;
     }
+    if (typeof request.deliveryConfirmedByCourier !== "boolean") {
+      request.deliveryConfirmedByCourier = false;
+      changed = true;
+    }
+    if (typeof request.deliveredAt !== "string") {
+      request.deliveredAt = "";
+      changed = true;
+    }
+    if (typeof request.receivedConfirmedByRequester !== "boolean") {
+      request.receivedConfirmedByRequester = false;
+      changed = true;
+    }
+    if (typeof request.receivedAt !== "string") {
+      request.receivedAt = "";
+      changed = true;
+    }
     if (typeof request.completedAt !== "string") {
       request.completedAt = "";
       changed = true;

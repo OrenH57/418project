@@ -293,8 +293,9 @@ export function Messaging() {
 
     try {
       setIsCompletingRequest(true);
-      await api.completeRequest(token, requestId);
-      toast.success("Order marked complete.");
+      const response = await api.completeRequest(token, requestId);
+      setRequestRecord(response.request);
+      toast.success(response.request.status === "completed" ? "Order completed." : "Handoff update recorded.");
       await loadMessages();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not complete this order.");
@@ -345,9 +346,34 @@ export function Messaging() {
     requestRecord?.serviceType === "food" && !requestRecord.foodReady && requestRecord.status === "accepted"
       ? "Food has not been marked ready yet. Confirm the GET ready email before pickup."
       : "";
-  const canCompleteRequest = Boolean(
-    requestRecord?.status === "accepted" && (isRequester || isAssignedCourier) && !completionBlocker,
+  const courierMarkedDelivered = Boolean(requestRecord?.deliveryConfirmedByCourier);
+  const requesterConfirmedReceived = Boolean(requestRecord?.receivedConfirmedByRequester);
+  const canCourierConfirmDelivery = Boolean(isAssignedCourier && !courierMarkedDelivered);
+  const canRequesterConfirmReceipt = Boolean(isRequester && courierMarkedDelivered && !requesterConfirmedReceived);
+  const canUpdateHandoff = Boolean(
+    requestRecord?.status === "accepted" && !completionBlocker && (canCourierConfirmDelivery || canRequesterConfirmReceipt),
   );
+  const completionButtonLabel = isCompletingRequest
+    ? isAssignedCourier
+      ? "Marking Delivered..."
+      : "Confirming..."
+    : isAssignedCourier
+      ? courierMarkedDelivered
+        ? "Delivered, Waiting"
+        : "Mark Delivered"
+      : !courierMarkedDelivered
+        ? "Waiting For Courier"
+        : requesterConfirmedReceived
+          ? "Received, Waiting"
+          : "Confirm Received";
+  const handoffStatusNote =
+    requestRecord?.status === "accepted" && !completionBlocker
+      ? courierMarkedDelivered && !requesterConfirmedReceived
+        ? "Courier marked delivered. The requester needs to confirm receipt before this closes."
+        : requesterConfirmedReceived && !courierMarkedDelivered
+          ? "Requester confirmed receipt. Waiting for the courier to mark delivered."
+          : ""
+      : "";
   const canCancelRequest = Boolean(requestRecord && isRequester && isActiveRequest);
   const canRateRequest = Boolean(requestRecord?.status === "completed");
   const courierEarnings =
@@ -580,10 +606,11 @@ export function Messaging() {
                   </div>
                 ) : null}
 
-                {completionBlocker || foodReadyNote ? (
+                {completionBlocker || foodReadyNote || handoffStatusNote ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
                     {completionBlocker ? <p>{completionBlocker}</p> : null}
                     {foodReadyNote ? <p className={completionBlocker ? "mt-2" : ""}>{foodReadyNote}</p> : null}
+                    {handoffStatusNote ? <p className={completionBlocker || foodReadyNote ? "mt-2" : ""}>{handoffStatusNote}</p> : null}
                   </div>
                 ) : null}
 
@@ -592,12 +619,12 @@ export function Messaging() {
                     {requestRecord.status === "accepted" && (isRequester || isAssignedCourier) ? (
                       <Button
                         className="w-full"
-                        disabled={!canCompleteRequest || isCompletingRequest || isCancellingRequest}
+                        disabled={!canUpdateHandoff || isCompletingRequest || isCancellingRequest}
                         onClick={() => void handleCompleteRequest()}
                         size="sm"
                       >
                         <CheckCircle2 className="mr-2 h-4 w-4" />
-                        {isCompletingRequest ? "Completing..." : "Mark Complete"}
+                        {completionButtonLabel}
                       </Button>
                     ) : null}
                     {canCancelRequest ? (

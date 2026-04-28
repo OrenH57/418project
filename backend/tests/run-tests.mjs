@@ -160,6 +160,41 @@ await runTest("readData upgrades old demo credentials from demo123 to demo1234",
   assert.equal(verifyPassword("demo123", demoUser.password), false);
 });
 
+await runTest("readData defaults two-step completion fields on legacy requests", async () => {
+  const fixture = {
+    users: [],
+    sessions: [],
+    requests: [
+      {
+        id: "legacy-request",
+        userId: "user-requester",
+        requesterName: "Legacy Requester",
+        serviceType: "food",
+        pickup: "Starbucks",
+        destination: "State Quad",
+        time: "Now",
+        payment: "4.99",
+        notes: "",
+        status: "accepted",
+        acceptedBy: "user-courier",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    messages: {},
+    restaurants: [],
+  };
+
+  await fs.writeFile(dataFile, JSON.stringify(fixture, null, 2));
+  const data = await readData();
+  const request = data.requests[0];
+
+  assert.equal(request.deliveryConfirmedByCourier, false);
+  assert.equal(request.deliveredAt, "");
+  assert.equal(request.receivedConfirmedByRequester, false);
+  assert.equal(request.receivedAt, "");
+  assert.equal(request.completedAt, "");
+});
+
 await runTest("readData reports duplicate demo accounts without deleting them", async () => {
   const fixture = {
     users: [
@@ -611,6 +646,10 @@ await runTest("decoratePublicCourierRequest hides sensitive order details", asyn
   assert.equal(publicRequest.orderScreenshot, "");
   assert.equal(publicRequest.payment, "4.99");
   assert.equal(publicRequest.pickup, "Starbucks");
+  assert.equal(publicRequest.deliveryConfirmedByCourier, false);
+  assert.equal(publicRequest.deliveredAt, "");
+  assert.equal(publicRequest.receivedConfirmedByRequester, false);
+  assert.equal(publicRequest.receivedAt, "");
 });
 
 await runTest("admin overview includes visible listings and excludes removed listings", async () => {

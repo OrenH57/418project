@@ -869,6 +869,10 @@ const server = http.createServer(async (request, response) => {
         orderEta: truncateText(body.orderEta, 120),
         foodReady: false,
         foodReadyAt: "",
+        deliveryConfirmedByCourier: false,
+        deliveredAt: "",
+        receivedConfirmedByRequester: false,
+        receivedAt: "",
         completedAt: "",
         cancelledAt: "",
         expiredAt: "",
@@ -1302,29 +1306,59 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      const isRequester = requestRecord.userId === auth.user.id;
+      const isAssignedCourier = requestRecord.acceptedBy === auth.user.id;
       const now = new Date().toISOString();
-      requestRecord.status = "completed";
-      requestRecord.completedAt = now;
-      requestRecord.closedBy = auth.user.id;
+      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
+      const pushSystemMessage = (text) => {
+        auth.data.messages[requestId].push({
+          id: `message-${crypto.randomUUID()}`,
+          senderId: auth.user.id,
+          senderName: auth.user.name,
+          text,
+          createdAt: now,
+        });
+      };
 
-      const courier = auth.data.users.find((entry) => entry.id === requestRecord.acceptedBy);
-      if (courier) {
-        const earnings =
-          requestRecord.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
-            ? requestRecord.runnerEarnings
-            : Number.parseFloat(requestRecord.payment || "0");
-        courier.completedJobs = Number(courier.completedJobs || 0) + 1;
-        courier.earnings = Number((Number(courier.earnings || 0) + (Number.isFinite(earnings) ? earnings : 0)).toFixed(2));
+      if (isAssignedCourier) {
+        if (requestRecord.deliveryConfirmedByCourier) {
+          sendJson(request, response, 400, { error: "You already marked this order delivered." });
+          return;
+        }
+        requestRecord.deliveryConfirmedByCourier = true;
+        requestRecord.deliveredAt = now;
+        pushSystemMessage("Courier marked this order delivered. Waiting for the requester to confirm receipt.");
+      } else if (isRequester) {
+        if (!requestRecord.deliveryConfirmedByCourier) {
+          sendJson(request, response, 400, { error: "Wait for the courier to mark this order delivered first." });
+          return;
+        }
+        if (requestRecord.receivedConfirmedByRequester) {
+          sendJson(request, response, 400, { error: "You already confirmed receipt for this order." });
+          return;
+        }
+        requestRecord.receivedConfirmedByRequester = true;
+        requestRecord.receivedAt = now;
+        pushSystemMessage("Requester confirmed they received the order.");
       }
 
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text: "Order completed. Thanks for using CampusConnect.",
-        createdAt: now,
-      });
+      if (requestRecord.deliveryConfirmedByCourier && requestRecord.receivedConfirmedByRequester) {
+        requestRecord.status = "completed";
+        requestRecord.completedAt = now;
+        requestRecord.closedBy = auth.user.id;
+
+        const courier = auth.data.users.find((entry) => entry.id === requestRecord.acceptedBy);
+        if (courier) {
+          const earnings =
+            requestRecord.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
+              ? requestRecord.runnerEarnings
+              : Number.parseFloat(requestRecord.payment || "0");
+          courier.completedJobs = Number(courier.completedJobs || 0) + 1;
+          courier.earnings = Number((Number(courier.earnings || 0) + (Number.isFinite(earnings) ? earnings : 0)).toFixed(2));
+        }
+
+        pushSystemMessage("Order completed. Thanks for using CampusConnect.");
+      }
       await writeData(auth.data);
       sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
       return;

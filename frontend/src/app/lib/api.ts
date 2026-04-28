@@ -63,6 +63,10 @@ export type RequestRecord = {
   orderEta?: string;
   foodReady?: boolean;
   foodReadyAt?: string;
+  deliveryConfirmedByCourier?: boolean;
+  deliveredAt?: string;
+  receivedConfirmedByRequester?: boolean;
+  receivedAt?: string;
   completedAt?: string;
   cancelledAt?: string;
   expiredAt?: string;
