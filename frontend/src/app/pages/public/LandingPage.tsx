@@ -68,7 +68,7 @@ export function LandingPage() {
               </h1>
 
               <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--muted)] sm:text-lg">
-                Order from the Campus Center in GET, then have another UAlbany student bring it to your dorm, library, or campus spot.
+                Campus restaurants do not deliver to dorms, so CampusConnect lets students request delivery from verified student couriers.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--muted)]">
