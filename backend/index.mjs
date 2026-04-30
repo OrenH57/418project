@@ -7,7 +7,7 @@ import path from "node:path";
 import { MongoClient } from "mongodb";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
-import { loadEnv } from "./lib/config.mjs";
+import { dataFile, loadEnv } from "./lib/config.mjs";
 import { createToken, hashPassword, isCampusEmail, verifyPassword } from "./lib/auth.mjs";
 import { buildAdminOverview, requireAdmin } from "./lib/admin.mjs";
 import { canAccessRequest, decorateRequest } from "./lib/requests.mjs";
@@ -19,7 +19,7 @@ import {
   getBodyLimitForRequest,
   validateDataImage,
 } from "./lib/security.mjs";
-import { createMongoDataAdapter } from "./lib/data/adapters.mjs";
+import { createMongoDataAdapter, createTempFileDataAdapter } from "./lib/data/adapters.mjs";
 import { createDataRepository } from "./lib/data/repository.mjs";
 import { SESSION_TTL_MS, isExpiredSession } from "./lib/data/normalize.mjs";
 import {
@@ -38,14 +38,8 @@ const rootDir = path.resolve(__dirname, "..");
 await loadEnv();
 const mongoUri = process.env.MONGODB_URI;
 
-if (!mongoUri) {
-  throw new Error("MONGODB_URI is missing from .env");
-}
-
-const client = new MongoClient(mongoUri);
-await client.connect();
-
-const db = client.db("campusconnect");
+let storageLabel = "file";
+let dataAdapter;
 
 function hasSameIndexSpec(existingIndex, expectedKey, expectedOptions = {}) {
   if (!hasSameIndexKey(existingIndex, expectedKey)) {
@@ -182,8 +176,27 @@ function logBackendEvent(event, details = {}) {
   }));
 }
 
+if (mongoUri) {
+  try {
+    const client = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 8000 });
+    await client.connect();
+    dataAdapter = createMongoDataAdapter(client.db("campusconnect"), { ensureIndex });
+    storageLabel = "mongodb";
+  } catch (error) {
+    console.warn("MongoDB unavailable; falling back to local file storage.", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+} else {
+  console.warn("MONGODB_URI is missing; using local file storage.");
+}
+
+if (!dataAdapter) {
+  dataAdapter = createTempFileDataAdapter({ dataFile });
+}
+
 const dataRepository = createDataRepository(
-  createMongoDataAdapter(db, { ensureIndex }),
+  dataAdapter,
   { log: logBackendEvent },
 );
 
@@ -419,7 +432,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && url.pathname === "/api/health") {
-      sendJson(request, response, 200, { ok: true, backend: "mongodb" });
+      sendJson(request, response, 200, { ok: true, backend: storageLabel });
       return;
     }
 
@@ -814,5 +827,5 @@ const port = Number(process.env.PORT || 4174);
 const host = process.env.HOST || "0.0.0.0";
 
 server.listen(port, host, () => {
-  console.log(`CampusConnect API running at http://${host}:${port} (MongoDB connected)`);
+  console.log(`CampusConnect API running at http://${host}:${port} (${storageLabel} storage)`);
 });
