@@ -16,6 +16,7 @@ export async function handleMessagingRoute(context) {
     canAccessRequest,
     decorateRequest,
     writeData,
+    dataRepository,
   } = context;
 
   if (request.method === "GET" && url.pathname.startsWith("/api/messages/")) {
@@ -83,15 +84,20 @@ export async function handleMessagingRoute(context) {
       return true;
     }
 
-    auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-    auth.data.messages[requestId].push({
+    const message = {
       id: `message-${crypto.randomUUID()}`,
       senderId: auth.user.id,
       senderName: auth.user.name,
       text,
       createdAt: new Date().toISOString(),
-    });
-    await writeData(auth.data);
+    };
+    if (dataRepository?.appendMessage) {
+      await dataRepository.appendMessage(requestId, message);
+    } else {
+      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
+      auth.data.messages[requestId].push(message);
+      await writeData(auth.data);
+    }
     sendJson(response, 201, { ok: true });
     return true;
   }
@@ -109,6 +115,7 @@ export async function handleRatingsRoute(context) {
     readBody,
     canAccessRequest,
     writeData,
+    dataRepository,
   } = context;
 
   if (request.method === "GET" && url.pathname.startsWith("/api/ratings/")) {
@@ -206,25 +213,31 @@ export async function handleRatingsRoute(context) {
       comment,
       createdAt: new Date().toISOString(),
     };
-    const existingIndex = auth.data.ratings.findIndex(
-      (entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id,
-    );
-
-    if (existingIndex >= 0) {
-      auth.data.ratings[existingIndex] = ratingRecord;
+    let savedTargetUser = targetUser;
+    if (dataRepository?.upsertRatingAndRecalculate) {
+      const result = await dataRepository.upsertRatingAndRecalculate(ratingRecord);
+      savedTargetUser = result.targetUser || targetUser;
     } else {
-      auth.data.ratings.push(ratingRecord);
+      const existingIndex = auth.data.ratings.findIndex(
+        (entry) => entry.requestId === requestId && entry.authorUserId === auth.user.id,
+      );
+
+      if (existingIndex >= 0) {
+        auth.data.ratings[existingIndex] = ratingRecord;
+      } else {
+        auth.data.ratings.push(ratingRecord);
+      }
+
+      const userRatings = auth.data.ratings.filter((entry) => entry.targetUserId === targetUserId);
+      const averageRating = userRatings.reduce((total, entry) => total + entry.rating, 0) / userRatings.length;
+      targetUser.rating = Number(averageRating.toFixed(1));
+      await writeData(auth.data);
     }
 
-    const userRatings = auth.data.ratings.filter((entry) => entry.targetUserId === targetUserId);
-    const averageRating = userRatings.reduce((total, entry) => total + entry.rating, 0) / userRatings.length;
-    targetUser.rating = Number(averageRating.toFixed(1));
-
-    await writeData(auth.data);
     sendJson(response, 201, {
       ok: true,
       rating: ratingRecord,
-      targetUser: { id: targetUser.id, name: targetUser.name, rating: targetUser.rating },
+      targetUser: { id: savedTargetUser.id, name: savedTargetUser.name, rating: savedTargetUser.rating },
     });
     return true;
   }
@@ -242,6 +255,7 @@ export async function handleProfileRoute(context) {
     readBody,
     writeData,
     sanitizeUser,
+    dataRepository,
   } = context;
 
   if (request.method === "GET" && url.pathname === "/api/profile") {
@@ -265,7 +279,14 @@ export async function handleProfileRoute(context) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     auth.user.pendingVerificationCode = code;
     auth.user.pendingVerificationIssuedAt = new Date().toISOString();
-    await writeData(auth.data);
+    if (dataRepository?.updateUserById) {
+      await dataRepository.updateUserById(auth.user.id, {
+        pendingVerificationCode: auth.user.pendingVerificationCode,
+        pendingVerificationIssuedAt: auth.user.pendingVerificationIssuedAt,
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { ok: true, previewCode: code });
     return true;
   }
@@ -285,7 +306,15 @@ export async function handleProfileRoute(context) {
     auth.user.foodSafetyVerified = true;
     delete auth.user.pendingVerificationCode;
     delete auth.user.pendingVerificationIssuedAt;
-    await writeData(auth.data);
+    if (dataRepository?.updateUserById) {
+      await dataRepository.updateUserById(auth.user.id, {
+        foodSafetyVerified: true,
+        pendingVerificationCode: "",
+        pendingVerificationIssuedAt: "",
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { user: sanitizeUser(auth.user) });
     return true;
   }
@@ -315,7 +344,18 @@ export async function handleProfileRoute(context) {
       auth.user.ualbanyIdImage = imageResult.value;
       auth.user.ualbanyIdUploaded = Boolean(imageResult.value);
     }
-    await writeData(auth.data);
+    if (dataRepository?.updateUserById) {
+      await dataRepository.updateUserById(auth.user.id, {
+        courierMode: auth.user.courierMode,
+        bio: auth.user.bio,
+        notificationsEnabled: auth.user.notificationsEnabled,
+        courierOnline: auth.user.courierOnline,
+        ualbanyIdImage: auth.user.ualbanyIdImage,
+        ualbanyIdUploaded: auth.user.ualbanyIdUploaded,
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { user: sanitizeUser(auth.user) });
     return true;
   }
@@ -336,6 +376,7 @@ export async function handleAdminRoute(context) {
     requireAdmin,
     buildAdminOverview,
     decorateRequest,
+    dataRepository,
   } = context;
 
   if (request.method === "GET" && url.pathname === "/api/admin/overview") {
@@ -384,7 +425,17 @@ export async function handleAdminRoute(context) {
       return true;
     }
 
-    await writeData(auth.data);
+    if (dataRepository?.updateRequestById) {
+      await dataRepository.updateRequestById(requestId, {
+        flagged: requestRecord.flagged,
+        flaggedReason: requestRecord.flaggedReason,
+        moderationStatus: requestRecord.moderationStatus,
+        removedAt: requestRecord.removedAt,
+        removedBy: requestRecord.removedBy,
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
     return true;
   }
@@ -414,18 +465,30 @@ export async function handleAdminRoute(context) {
     targetUser.suspendedReason = suspended ? reason || "Suspended by admin review." : "";
 
     if (suspended) {
-      for (const requestRecord of auth.data.requests) {
-        if (requestRecord.userId === targetUser.id || requestRecord.acceptedBy === targetUser.id) {
-          requestRecord.flagged = true;
-          requestRecord.flaggedReason = `Connected to suspended account: ${targetUser.name}`;
-          if (requestRecord.moderationStatus === "clear") {
-            requestRecord.moderationStatus = "flagged";
+      const flaggedReason = `Connected to suspended account: ${targetUser.name}`;
+      if (dataRepository?.flagRequestsForSuspendedUser) {
+        await dataRepository.flagRequestsForSuspendedUser(targetUser.id, flaggedReason);
+      } else {
+        for (const requestRecord of auth.data.requests) {
+          if (requestRecord.userId === targetUser.id || requestRecord.acceptedBy === targetUser.id) {
+            requestRecord.flagged = true;
+            requestRecord.flaggedReason = flaggedReason;
+            if (requestRecord.moderationStatus === "clear") {
+              requestRecord.moderationStatus = "flagged";
+            }
           }
         }
       }
     }
 
-    await writeData(auth.data);
+    if (dataRepository?.updateUserById) {
+      await dataRepository.updateUserById(targetUser.id, {
+        suspended: targetUser.suspended,
+        suspendedReason: targetUser.suspendedReason,
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { user: sanitizeUser(targetUser) });
     return true;
   }
@@ -445,6 +508,7 @@ export async function handlePaymentsRoute(context) {
     decorateRequest,
     createStripeCheckoutSession,
     getStripeCheckoutSession,
+    dataRepository,
   } = context;
 
   if (request.method === "POST" && url.pathname === "/api/payments/create-checkout-session") {
@@ -510,7 +574,17 @@ export async function handlePaymentsRoute(context) {
 
     requestRecord.paymentStatus = "pending";
     requestRecord.stripeCheckoutSessionId = String(session.id || "");
-    await writeData(auth.data);
+    if (dataRepository?.updateRequestById) {
+      await dataRepository.updateRequestById(requestId, {
+        ...(requestRecord.basePayment ? { basePayment: requestRecord.basePayment } : {}),
+        tipAmount: requestRecord.tipAmount,
+        payment: requestRecord.payment,
+        paymentStatus: requestRecord.paymentStatus,
+        stripeCheckoutSessionId: requestRecord.stripeCheckoutSessionId,
+      });
+    } else {
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { url: session.url });
     return true;
   }
@@ -562,15 +636,25 @@ export async function handlePaymentsRoute(context) {
 
       requestRecord.paymentStatus = "paid";
       requestRecord.paidAt = new Date().toISOString();
+      if (dataRepository?.updateRequestById) {
+        await dataRepository.updateRequestById(requestId, {
+          paymentStatus: requestRecord.paymentStatus,
+          paidAt: requestRecord.paidAt,
+        });
+      }
     } else if (paymentState === "cancelled") {
       requestRecord.paymentStatus = "unpaid";
+      if (dataRepository?.updateRequestById) {
+        await dataRepository.updateRequestById(requestId, {
+          paymentStatus: requestRecord.paymentStatus,
+        });
+      }
     } else {
       sendJson(response, 400, { error: "Unsupported payment state." });
       return true;
     }
 
-    auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-    auth.data.messages[requestId].push({
+    const paymentMessage = {
       id: `message-${crypto.randomUUID()}`,
       senderId: auth.user.id,
       senderName: auth.user.name,
@@ -579,8 +663,14 @@ export async function handlePaymentsRoute(context) {
           ? "Payment was completed in Stripe Checkout."
           : "Stripe Checkout was cancelled before payment was completed.",
       createdAt: new Date().toISOString(),
-    });
-    await writeData(auth.data);
+    };
+    if (dataRepository?.appendMessage) {
+      await dataRepository.appendMessage(requestId, paymentMessage);
+    } else {
+      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
+      auth.data.messages[requestId].push(paymentMessage);
+      await writeData(auth.data);
+    }
     sendJson(response, 200, { request: decorateRequest(requestRecord, auth.data) });
     return true;
   }

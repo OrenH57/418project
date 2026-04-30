@@ -7,38 +7,16 @@ import path from "node:path";
 import { MongoClient } from "mongodb";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
-import {
-  DISCOUNT_RATE,
-  MIN_PAYMENT_OFFER,
-  loadEnv,
-} from "./lib/config.mjs";
+import { loadEnv } from "./lib/config.mjs";
 import { createToken, hashPassword, isCampusEmail, verifyPassword } from "./lib/auth.mjs";
-import { buildAdminOverview, applyAutomaticModeration, blockedRequestKeywords, requireAdmin } from "./lib/admin.mjs";
-import { DELIVERY_LOCATIONS, getDeliveryPricingForLocation } from "./lib/deliveryPricing.mjs";
-import {
-  createIdempotencyExpiry,
-  createRequestFingerprint,
-  getSafeIdempotencyKeyRef,
-  normalizeIdempotencyKey,
-} from "./lib/idempotency.mjs";
-import {
-  canAccessRequest,
-  decoratePublicCourierRequest,
-  decorateRequest,
-  findRecentDuplicateRequest,
-  findRecentSimilarSubmission,
-  getCampusSnapshot,
-  isActiveRequestStatus,
-  isVisibleRequest,
-} from "./lib/requests.mjs";
+import { buildAdminOverview, requireAdmin } from "./lib/admin.mjs";
+import { canAccessRequest, decorateRequest } from "./lib/requests.mjs";
 import { verifyMicrosoftIdToken } from "./lib/microsoftAuth.mjs";
-import { createStripeCheckoutSession, getStripeCheckoutSession } from "./lib/payments.mjs";
-import { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } from "./lib/paymentPolicy.mjs";
+import { createStripeCheckoutSession, getStripeCheckoutSession, verifyStripeWebhookPayload } from "./lib/payments.mjs";
 import {
   buildSecurityHeaders,
   createRouteRateLimiter,
   getBodyLimitForRequest,
-  truncateText,
   validateDataImage,
 } from "./lib/security.mjs";
 import { createMongoDataAdapter } from "./lib/data/adapters.mjs";
@@ -51,6 +29,7 @@ import {
   handleProfileRoute,
   handleRatingsRoute,
 } from "./lib/routeGroups.mjs";
+import { handleRequestRoute } from "./routes/requestRoutes.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +48,25 @@ await client.connect();
 const db = client.db("campusconnect");
 
 function hasSameIndexSpec(existingIndex, expectedKey, expectedOptions = {}) {
+  if (!hasSameIndexKey(existingIndex, expectedKey)) {
+    return false;
+  }
+
+  if (Boolean(existingIndex.unique) !== Boolean(expectedOptions.unique)) {
+    return false;
+  }
+
+  if (
+    "expireAfterSeconds" in expectedOptions &&
+    Number(existingIndex.expireAfterSeconds) !== Number(expectedOptions.expireAfterSeconds)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function hasSameIndexKey(existingIndex, expectedKey) {
   const existingKeyEntries = Object.entries(existingIndex.key || {});
   const expectedKeyEntries = Object.entries(expectedKey);
 
@@ -82,32 +80,71 @@ function hasSameIndexSpec(existingIndex, expectedKey, expectedOptions = {}) {
     }
   }
 
-  if (typeof expectedOptions.unique === "boolean" && Boolean(existingIndex.unique) !== expectedOptions.unique) {
+  return true;
+}
+
+function getDefaultIndexName(key) {
+  return Object.entries(key)
+    .map(([field, direction]) => `${field}_${direction}`)
+    .join("_");
+}
+
+function isRecoverableIndexError(error) {
+  if (!(error && typeof error === "object" && "code" in error)) {
     return false;
   }
 
-  return true;
+  const isIndexBuildError = error.message?.includes("Index build failed") || error.message?.includes("E11000");
+  return error.code === 85 || error.code === 86 || (error.code === 11000 && isIndexBuildError);
+}
+
+function warnIndexSkipped(collection, key, options, error) {
+  console.warn("MongoDB index setup warning; continuing without this index.", {
+    collection: collection.collectionName,
+    key,
+    options,
+    code: error?.code,
+    codeName: error?.codeName,
+    message: error instanceof Error ? error.message : String(error),
+  });
 }
 
 async function ensureIndex(collection, key, options = {}) {
   try {
     await collection.createIndex(key, options);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === 85) {
-      const indexes = await collection.listIndexes().toArray();
-      const alreadyCovered = indexes.some((entry) => hasSameIndexSpec(entry, key, options));
+    // 85/86 are stale index conflicts. 11000 can happen when existing data violates
+    // a unique index being created. None of those should prevent the demo server
+    // from starting; the app still guards duplicates in application code.
+    if (isRecoverableIndexError(error)) {
+      try {
+        const indexes = await collection.listIndexes().toArray();
+        const alreadyCovered = indexes.some((entry) => hasSameIndexSpec(entry, key, options));
 
-      if (alreadyCovered) {
+        if (alreadyCovered) {
+          return;
+        }
+
+        const requestedName = options.name || getDefaultIndexName(key);
+        const conflictingIndex = indexes.find((entry) => entry.name === requestedName);
+        if (conflictingIndex && hasSameIndexKey(conflictingIndex, key)) {
+          await collection.dropIndex(conflictingIndex.name);
+          await collection.createIndex(key, options);
+          return;
+        }
+      } catch (repairError) {
+        warnIndexSkipped(collection, key, options, repairError);
         return;
       }
+
+      warnIndexSkipped(collection, key, options, error);
+      return;
     }
 
     throw error;
   }
 }
 
-const MAX_ACTIVE_REQUESTS_PER_USER = 3;
-const ORDER_CREATION_LOCK_TTL_MS = 30 * 1000;
 const checkAnonymousRateLimit = createRouteRateLimiter([
   {
     keyPrefix: "auth",
@@ -202,104 +239,8 @@ function getUserCreationGuardError(user) {
   return "";
 }
 
-function getRequestCreationGuardError(requestRecord) {
-  if (!requestRecord?.id) return "Order id is required.";
-  if (!requestRecord.userId) return "Order user is required.";
-  if (!requestRecord.serviceType) return "Order service type is required.";
-  if (!requestRecord.pickup) return "Pickup is required.";
-  if (!requestRecord.time) return "Delivery time is required.";
-  if (!requestRecord.payment) return "Delivery fee is required.";
-
-  if (requestRecord.serviceType === "food") {
-    if (!requestRecord.destination) return "Delivery destination is required for food orders.";
-    if (!requestRecord.deliveryLocationId) return "Delivery location is required for food orders.";
-  }
-
-  return "";
-}
-
 async function ensureSeedData() {
   await dataRepository.ensureSeedData();
-}
-
-async function reserveIdempotencyKey({ userId, key, fingerprint }) {
-  if (!key) {
-    logBackendEvent("idempotency.missing_key", {
-      userId,
-    });
-    return { reserved: false };
-  }
-
-  const record = {
-    userId,
-    key,
-    fingerprint,
-    status: "pending",
-    createdAt: new Date(),
-    expiresAt: createIdempotencyExpiry(),
-  };
-
-  const result = await dataRepository.reserveIdempotencyRecord(record);
-  if (result.reserved) {
-    logBackendEvent("idempotency.reserved", {
-      userId,
-      idempotencyKeyRef: getSafeIdempotencyKeyRef(key),
-      fingerprint,
-      expiresAt: record.expiresAt.toISOString(),
-    });
-    return { reserved: true, record };
-  }
-
-  logBackendEvent("idempotency.reused", {
-    userId,
-    idempotencyKeyRef: getSafeIdempotencyKeyRef(key),
-    existingStatus: result.record?.status || "missing",
-    fingerprintMatches: result.record?.fingerprint ? result.record.fingerprint === fingerprint : null,
-  });
-  return result;
-}
-
-async function waitForCompletedIdempotencyRecord(userId, key) {
-  const deadline = Date.now() + 2500;
-
-  while (Date.now() < deadline) {
-    const record = await dataRepository.findIdempotencyRecord(userId, key);
-    if (record?.status === "completed") {
-      return record;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  return await dataRepository.findIdempotencyRecord(userId, key);
-}
-
-async function completeIdempotencyKey({ userId, key, statusCode, payload }) {
-  if (!key) {
-    return;
-  }
-
-  await dataRepository.completeIdempotencyRecord({ userId, key, statusCode, payload });
-}
-
-async function acquireOrderCreationLock(userId) {
-  const deadline = Date.now() + 2500;
-
-  while (Date.now() < deadline) {
-    try {
-      return await dataRepository.acquireOrderCreationLock(userId, new Date(Date.now() + ORDER_CREATION_LOCK_TTL_MS));
-    } catch (error) {
-      if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-
-  return false;
-}
-
-async function releaseOrderCreationLock(userId) {
-  await dataRepository.releaseOrderCreationLock(userId);
 }
 
 function sendJson(requestOrResponse, responseOrStatusCode, statusCodeOrPayload, payloadOrHeaders, maybeHeaders = {}) {
@@ -438,6 +379,23 @@ async function readBody(request, limitBytes = 256 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+async function readRawBody(request, limitBytes = 256 * 1024) {
+  const chunks = [];
+  let receivedBytes = 0;
+
+  for await (const chunk of request) {
+    receivedBytes += chunk.length;
+    if (receivedBytes > limitBytes) {
+      const error = new Error("Request body is too large.");
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     if (!request.url) {
@@ -462,6 +420,53 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/api/health") {
       sendJson(request, response, 200, { ok: true, backend: "mongodb" });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/payments/webhook") {
+      const rawBody = await readRawBody(request, getBodyLimitForRequest(request, url));
+      let event;
+
+      try {
+        event = verifyStripeWebhookPayload(rawBody, request.headers["stripe-signature"] || "");
+      } catch (error) {
+        logBackendEvent("stripe.webhook.rejected", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        sendJson(request, response, 400, { error: "Invalid Stripe webhook." });
+        return;
+      }
+
+      if (event?.type === "checkout.session.completed") {
+        const checkoutSessionId = String(event.data?.object?.id || "");
+        const paymentStatus = String(event.data?.object?.payment_status || "");
+
+        if (checkoutSessionId && paymentStatus === "paid") {
+          const paidAt = new Date().toISOString();
+          const result = await dataRepository.markRequestPaidByCheckoutSession(checkoutSessionId, {
+            paymentStatus: "paid",
+            paidAt,
+          });
+
+          if (result.modifiedCount && result.request) {
+            await dataRepository.appendMessage(result.request.id, {
+              id: `message-${crypto.randomUUID()}`,
+              senderId: "system",
+              senderName: "CampusConnect",
+              text: "Payment was completed in Stripe Checkout.",
+              createdAt: paidAt,
+            });
+          }
+
+          logBackendEvent("stripe.webhook.checkout_completed", {
+            checkoutSessionId,
+            requestId: result.request?.id || "",
+            updated: Boolean(result.modifiedCount),
+          });
+        }
+      }
+
+      sendJson(request, response, 200, { received: true });
       return;
     }
 
@@ -751,678 +756,6 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-      sendJson(request, response, 200, {
-        user: sanitizeUser(auth.user),
-        restaurants: auth.data.restaurants,
-        deliveryLocations: DELIVERY_LOCATIONS,
-        requests: auth.data.requests
-          .filter((entry) => entry.userId === auth.user.id)
-          .filter(isVisibleRequest)
-          .map((entry) => decorateRequest(entry, auth.data)),
-        campusSnapshot: getCampusSnapshot(auth.data, auth.user.id),
-      });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/requests") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const mode = url.searchParams.get("mode") || "all";
-      let filtered = auth.data.requests;
-
-      if (mode === "mine") {
-        filtered = filtered.filter((entry) => entry.userId === auth.user.id);
-      } else if (mode === "courier") {
-        filtered = filtered.filter((entry) => entry.status === "open" || entry.acceptedBy === auth.user.id);
-      } else {
-        filtered = filtered.filter((entry) => entry.userId === auth.user.id);
-      }
-
-      sendJson(request, response, 200, {
-        requests: filtered
-          .filter((entry) => entry.moderationStatus !== "removed")
-          .slice()
-          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-          .map((entry) =>
-            mode === "courier" && entry.status === "open" && entry.acceptedBy !== auth.user.id
-              ? decoratePublicCourierRequest(entry)
-              : decorateRequest(entry, auth.data),
-          ),
-      });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/requests") {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const body = await readBody(request, getBodyLimitForRequest(request, url));
-      const startCheckout = body.startCheckout === true;
-      const serviceType = String(body.serviceType || "food");
-      const deliveryPricing = serviceType === "food" ? getDeliveryPricingForLocation(body.deliveryLocationId) : null;
-      const idempotencyKey = normalizeIdempotencyKey(body.idempotencyKey);
-      const idempotencyFingerprint = createRequestFingerprint(body);
-      logBackendEvent("order.create.attempt", {
-        userId: auth.user.id,
-        serviceType,
-        pickup: String(body.pickup || "").trim(),
-        destination: String(body.destination || "").trim(),
-        deliveryLocationId: String(body.deliveryLocationId || "").trim(),
-        idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        fingerprint: idempotencyFingerprint,
-        startCheckout,
-      });
-
-      if (deliveryPricing && !deliveryPricing.ok) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: deliveryPricing.error,
-          deliveryLocationId: String(body.deliveryLocationId || "").trim(),
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: deliveryPricing.error });
-        return;
-      }
-
-      const tipResult = parseOptionalTip(body.tipAmount);
-      if (!tipResult.ok) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: "invalid_tip",
-          tipAmount: body.tipAmount,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: tipResult.error });
-        return;
-      }
-
-      const basePayment = deliveryPricing?.fee ?? MIN_PAYMENT_OFFER;
-      const paymentTotal = buildPaymentTotal(basePayment, tipResult.amount);
-
-      const screenshotResult = validateDataImage(body.orderScreenshot, {
-        required: false,
-        maxBytes: 2 * 1024 * 1024,
-      });
-      if (!screenshotResult.ok) {
-        sendJson(request, response, 400, { error: screenshotResult.error });
-        return;
-      }
-
-      const requestRecord = {
-        id: `request-${crypto.randomUUID()}`,
-        userId: auth.user.id,
-        requesterName: auth.user.name,
-        serviceType,
-        pickup: truncateText(body.pickup, 120),
-        destination: truncateText(body.destination, 180),
-        time: truncateText(body.time, 80),
-        payment: formatPaymentAmount(paymentTotal),
-        basePayment,
-        tipAmount: tipResult.amount,
-        deliveryLocationId: deliveryPricing?.id ?? "",
-        deliveryLocationLabel: deliveryPricing?.label ?? "",
-        notes: truncateText(body.notes, 1000),
-        orderEta: truncateText(body.orderEta, 120),
-        foodReady: false,
-        foodReadyAt: "",
-        deliveryConfirmedByCourier: false,
-        deliveredAt: "",
-        receivedConfirmedByRequester: false,
-        receivedAt: "",
-        completedAt: "",
-        cancelledAt: "",
-        expiredAt: "",
-        closedBy: "",
-        orderScreenshot: screenshotResult.value,
-        estimatedRetailTotal: Number.isFinite(Number(body.estimatedRetailTotal)) ? Number(body.estimatedRetailTotal) : null,
-        estimatedDiscountCost: null,
-        runnerEarnings: null,
-        paymentStatus: "unpaid",
-        paidAt: "",
-        stripeCheckoutSessionId: "",
-        status: "open",
-        acceptedBy: null,
-        flagged: false,
-        flaggedReason: "",
-        moderationStatus: "clear",
-        removedAt: "",
-        removedBy: "",
-        createdAt: new Date().toISOString(),
-      };
-
-      if (!requestRecord.pickup || !requestRecord.time || !requestRecord.payment) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: "missing_required_fields",
-          requestId: requestRecord.id,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: "Pickup, time, and delivery fee are required." });
-        return;
-      }
-
-      if (requestRecord.serviceType === "food" && !requestRecord.destination) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: "missing_destination",
-          requestId: requestRecord.id,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: "Delivery destination is required for food orders." });
-        return;
-      }
-
-      const paymentAmount = Number.parseFloat(requestRecord.payment);
-      if (!Number.isFinite(paymentAmount) || paymentAmount < MIN_PAYMENT_OFFER) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: "invalid_payment",
-          requestId: requestRecord.id,
-          payment: requestRecord.payment,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: `Payment offers must be at least $${MIN_PAYMENT_OFFER}.` });
-        return;
-      }
-
-      if (requestRecord.serviceType === "discount") {
-        if (!Number.isFinite(requestRecord.estimatedRetailTotal)) {
-          logBackendEvent("order.create.rejected", {
-            userId: auth.user.id,
-            reason: "missing_estimated_retail_total",
-            requestId: requestRecord.id,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          });
-          sendJson(request, response, 400, { error: "Estimated retail total is required for discount dollar runs." });
-          return;
-        }
-
-        requestRecord.estimatedDiscountCost = Number((requestRecord.estimatedRetailTotal * (1 - DISCOUNT_RATE)).toFixed(2));
-        requestRecord.runnerEarnings = Number((paymentAmount - requestRecord.estimatedDiscountCost).toFixed(2));
-
-        if (requestRecord.runnerEarnings <= 0) {
-          logBackendEvent("order.create.rejected", {
-            userId: auth.user.id,
-            reason: "invalid_runner_earnings",
-            requestId: requestRecord.id,
-            payment: requestRecord.payment,
-            estimatedDiscountCost: requestRecord.estimatedDiscountCost,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          });
-          sendJson(request, response, 400, { error: "Platform payment must leave room for the runner to earn money." });
-          return;
-        }
-      }
-
-      const requestCreationError = getRequestCreationGuardError(requestRecord);
-      if (requestCreationError) {
-        logBackendEvent("order.create.rejected", {
-          userId: auth.user.id,
-          reason: requestCreationError,
-          requestId: requestRecord.id,
-          serviceType: requestRecord.serviceType,
-          deliveryLocationId: requestRecord.deliveryLocationId,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 400, { error: requestCreationError });
-        return;
-      }
-
-      const idempotencyReservation = await reserveIdempotencyKey({
-        userId: auth.user.id,
-        key: idempotencyKey,
-        fingerprint: idempotencyFingerprint,
-      });
-
-      if (idempotencyKey && !idempotencyReservation.reserved) {
-        const existingRecord =
-          idempotencyReservation.record?.status === "completed"
-            ? idempotencyReservation.record
-            : await waitForCompletedIdempotencyRecord(auth.user.id, idempotencyKey);
-
-        if (existingRecord?.fingerprint && existingRecord.fingerprint !== idempotencyFingerprint) {
-          logBackendEvent("duplicate_prevention.idempotency_conflict", {
-            userId: auth.user.id,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-            incomingFingerprint: idempotencyFingerprint,
-            existingFingerprint: existingRecord.fingerprint,
-          });
-          sendJson(request, response, 409, { error: "This request key was already used for a different order." });
-          return;
-        }
-
-        if (existingRecord?.status === "completed" && existingRecord.responsePayload) {
-          logBackendEvent("duplicate_prevention.idempotency_replay", {
-            userId: auth.user.id,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-            responseStatus: existingRecord.responseStatus || 200,
-            requestId: existingRecord.responsePayload?.request?.id || "",
-          });
-          sendJson(request, response, existingRecord.responseStatus || 200, existingRecord.responsePayload);
-          return;
-        }
-
-        logBackendEvent("duplicate_prevention.idempotency_pending", {
-          userId: auth.user.id,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          existingStatus: existingRecord?.status || "missing",
-        });
-        sendJson(request, response, 409, { error: "This order is already being processed. Please wait a moment." });
-        return;
-      }
-
-      const lockAcquired = await acquireOrderCreationLock(auth.user.id);
-      if (!lockAcquired) {
-        await dataRepository.deleteIdempotencyRecord(auth.user.id, idempotencyKey);
-        logBackendEvent("duplicate_prevention.order_lock_timeout", {
-          userId: auth.user.id,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-        });
-        sendJson(request, response, 409, { error: "Another order is already being created. Please try again." });
-        return;
-      }
-
-      try {
-        applyAutomaticModeration(requestRecord);
-
-        const duplicateCandidates = await dataRepository.findActiveRequestsByUser(auth.user.id);
-        const duplicateRequest =
-          findRecentDuplicateRequest(duplicateCandidates, requestRecord) ||
-          findRecentSimilarSubmission(duplicateCandidates, requestRecord);
-        if (duplicateRequest) {
-          const payload = {
-            duplicate: true,
-            request: decorateRequest(duplicateRequest, auth.data),
-          };
-          logBackendEvent("duplicate_prevention.recent_duplicate", {
-            userId: auth.user.id,
-            incomingRequestId: requestRecord.id,
-            existingRequestId: duplicateRequest.id,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-            fingerprint: idempotencyFingerprint,
-          });
-          await completeIdempotencyKey({
-            userId: auth.user.id,
-            key: idempotencyKey,
-            statusCode: 200,
-            payload,
-          });
-          sendJson(request, response, 200, payload);
-          return;
-        }
-
-        const activeRequestCount = await dataRepository.countActiveRequestsByUser(auth.user.id);
-
-        if (activeRequestCount >= MAX_ACTIVE_REQUESTS_PER_USER) {
-          const payload = {
-            error: `You can only have ${MAX_ACTIVE_REQUESTS_PER_USER} active orders at a time.`,
-          };
-          logBackendEvent("duplicate_prevention.active_limit", {
-            userId: auth.user.id,
-            activeRequestCount,
-            maxActiveRequests: MAX_ACTIVE_REQUESTS_PER_USER,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          });
-          await completeIdempotencyKey({
-            userId: auth.user.id,
-            key: idempotencyKey,
-            statusCode: 400,
-            payload,
-          });
-          sendJson(request, response, 400, payload);
-          return;
-        }
-
-        await dataRepository.insertRequest(requestRecord);
-        const messages = [
-          {
-            id: `message-${crypto.randomUUID()}`,
-            senderId: auth.user.id,
-            senderName: auth.user.name,
-            text:
-              requestRecord.serviceType === "food"
-                ? `Food delivery request posted for ${requestRecord.pickup}.`
-                : "Request posted successfully.",
-            createdAt: new Date().toISOString(),
-          },
-        ];
-
-        if (startCheckout) {
-          const amountNumber = Math.round(Number.parseFloat(requestRecord.payment) * 100);
-
-          if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-            await dataRepository.deleteIdempotencyRecord(auth.user.id, idempotencyKey);
-            await dataRepository.deleteRequestById(requestRecord.id);
-            sendJson(request, response, 400, { error: "Request payment amount is invalid." });
-            return;
-          }
-
-          const session = await createStripeCheckoutSession({
-            amount: amountNumber,
-            requestId: requestRecord.id,
-            requesterEmail: auth.user.email,
-            description: `${requestRecord.pickup} to ${requestRecord.destination || "campus drop-off"}`,
-            request,
-          });
-
-          requestRecord.paymentStatus = "pending";
-          requestRecord.stripeCheckoutSessionId = String(session.id || "");
-          messages.push({
-            id: `message-${crypto.randomUUID()}`,
-            senderId: auth.user.id,
-            senderName: auth.user.name,
-            text: "Stripe Checkout started for this request.",
-            createdAt: new Date().toISOString(),
-          });
-          await dataRepository.updateRequestById(requestRecord.id, {
-            paymentStatus: requestRecord.paymentStatus,
-            stripeCheckoutSessionId: requestRecord.stripeCheckoutSessionId,
-          });
-          await dataRepository.insertMessages(requestRecord.id, messages);
-          const payload = { request: decorateRequest(requestRecord, auth.data), checkoutUrl: session.url };
-          await completeIdempotencyKey({
-            userId: auth.user.id,
-            key: idempotencyKey,
-            statusCode: 201,
-            payload,
-          });
-          logBackendEvent("order.create.success", {
-            userId: auth.user.id,
-            requestId: requestRecord.id,
-            serviceType: requestRecord.serviceType,
-            deliveryLocationId: requestRecord.deliveryLocationId,
-            payment: requestRecord.payment,
-            paymentStatus: requestRecord.paymentStatus,
-            idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-            startCheckout,
-          });
-          sendJson(request, response, 201, payload);
-          return;
-        }
-
-        await dataRepository.insertMessages(requestRecord.id, messages);
-        const payload = { request: decorateRequest(requestRecord, auth.data) };
-        await completeIdempotencyKey({
-          userId: auth.user.id,
-          key: idempotencyKey,
-          statusCode: 201,
-          payload,
-        });
-        logBackendEvent("order.create.success", {
-          userId: auth.user.id,
-          requestId: requestRecord.id,
-          serviceType: requestRecord.serviceType,
-          deliveryLocationId: requestRecord.deliveryLocationId,
-          payment: requestRecord.payment,
-          paymentStatus: requestRecord.paymentStatus,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          startCheckout,
-        });
-        sendJson(request, response, 201, payload);
-        return;
-      } catch (error) {
-        await dataRepository.deleteIdempotencyRecord(auth.user.id, idempotencyKey);
-        await dataRepository.deleteRequestById(requestRecord.id);
-        await dataRepository.deleteMessagesByRequestId(requestRecord.id);
-        logBackendEvent("order.create.failed", {
-          userId: auth.user.id,
-          requestId: requestRecord.id,
-          idempotencyKeyRef: getSafeIdempotencyKeyRef(idempotencyKey),
-          message: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      } finally {
-        await releaseOrderCreationLock(auth.user.id);
-      }
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/requests/") && url.pathname.endsWith("/accept")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(request, response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(request, response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (requestRecord.serviceType === "food" && !auth.user.foodSafetyVerified) {
-        sendJson(request, response, 403, { error: "Verify your campus email before accepting food deliveries." });
-        return;
-      }
-
-      if (requestRecord.userId === auth.user.id) {
-        sendJson(request, response, 400, { error: "You cannot accept your own request." });
-        return;
-      }
-
-      if (requestRecord.status === "accepted" && requestRecord.acceptedBy && requestRecord.acceptedBy !== auth.user.id) {
-        sendJson(request, response, 409, { error: "This request was already accepted by another courier." });
-        return;
-      }
-
-      if (requestRecord.status !== "open" && requestRecord.acceptedBy !== auth.user.id) {
-        sendJson(request, response, 400, { error: "This request is no longer open." });
-        return;
-      }
-
-      requestRecord.status = "accepted";
-      requestRecord.acceptedBy = auth.user.id;
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text: `${auth.user.name} accepted this request and is heading to pickup.`,
-        createdAt: new Date().toISOString(),
-      });
-      await writeData(auth.data);
-      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/requests/") && url.pathname.endsWith("/ready")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(request, response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(request, response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (requestRecord.userId !== auth.user.id) {
-        sendJson(request, response, 403, { error: "Only the requester can mark this order as ready." });
-        return;
-      }
-
-      if (requestRecord.serviceType !== "food") {
-        sendJson(request, response, 400, { error: "Only food requests can be marked ready." });
-        return;
-      }
-
-      requestRecord.foodReady = true;
-      requestRecord.foodReadyAt = new Date().toISOString();
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text: "I got the GET email. The food is ready for pickup now.",
-        createdAt: new Date().toISOString(),
-      });
-      await writeData(auth.data);
-      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/requests/") && url.pathname.endsWith("/complete")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(request, response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(request, response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (!canAccessRequest(auth.user.id, requestRecord)) {
-        sendJson(request, response, 403, { error: "Only the requester or assigned courier can complete this order." });
-        return;
-      }
-
-      if (requestRecord.status !== "accepted" || !requestRecord.acceptedBy) {
-        sendJson(request, response, 400, { error: "Only accepted orders can be completed." });
-        return;
-      }
-
-      if (requestRecord.paymentStatus !== "paid") {
-        sendJson(request, response, 400, { error: "Payment must be completed before this order can be closed." });
-        return;
-      }
-
-      const isRequester = requestRecord.userId === auth.user.id;
-      const isAssignedCourier = requestRecord.acceptedBy === auth.user.id;
-      const now = new Date().toISOString();
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      const pushSystemMessage = (text) => {
-        auth.data.messages[requestId].push({
-          id: `message-${crypto.randomUUID()}`,
-          senderId: auth.user.id,
-          senderName: auth.user.name,
-          text,
-          createdAt: now,
-        });
-      };
-
-      if (isAssignedCourier) {
-        if (requestRecord.deliveryConfirmedByCourier) {
-          sendJson(request, response, 400, { error: "You already marked this order delivered." });
-          return;
-        }
-        requestRecord.deliveryConfirmedByCourier = true;
-        requestRecord.deliveredAt = now;
-        pushSystemMessage("Courier marked this order delivered. Waiting for the requester to confirm receipt.");
-      } else if (isRequester) {
-        if (!requestRecord.deliveryConfirmedByCourier) {
-          sendJson(request, response, 400, { error: "Wait for the courier to mark this order delivered first." });
-          return;
-        }
-        if (requestRecord.receivedConfirmedByRequester) {
-          sendJson(request, response, 400, { error: "You already confirmed receipt for this order." });
-          return;
-        }
-        requestRecord.receivedConfirmedByRequester = true;
-        requestRecord.receivedAt = now;
-        pushSystemMessage("Requester confirmed they received the order.");
-      }
-
-      if (requestRecord.deliveryConfirmedByCourier && requestRecord.receivedConfirmedByRequester) {
-        requestRecord.status = "completed";
-        requestRecord.completedAt = now;
-        requestRecord.closedBy = auth.user.id;
-
-        const courier = auth.data.users.find((entry) => entry.id === requestRecord.acceptedBy);
-        if (courier) {
-          const earnings =
-            requestRecord.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
-              ? requestRecord.runnerEarnings
-              : Number.parseFloat(requestRecord.payment || "0");
-          courier.completedJobs = Number(courier.completedJobs || 0) + 1;
-          courier.earnings = Number((Number(courier.earnings || 0) + (Number.isFinite(earnings) ? earnings : 0)).toFixed(2));
-        }
-
-        pushSystemMessage("Order completed. Thanks for using CampusConnect.");
-      }
-      await writeData(auth.data);
-      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
-
-    if (request.method === "POST" && url.pathname.startsWith("/api/requests/") && url.pathname.endsWith("/cancel")) {
-      const auth = await requireUser(request, response);
-      if (!auth) return;
-
-      const requestId = url.pathname.split("/")[3];
-      const requestRecord = auth.data.requests.find((entry) => entry.id === requestId);
-
-      if (!requestRecord) {
-        sendJson(request, response, 404, { error: "Request not found." });
-        return;
-      }
-
-      if (requestRecord.moderationStatus === "removed") {
-        sendJson(request, response, 410, { error: "This request was removed by an admin." });
-        return;
-      }
-
-      if (requestRecord.userId !== auth.user.id) {
-        sendJson(request, response, 403, { error: "Only the requester can cancel this order." });
-        return;
-      }
-
-      if (!isActiveRequestStatus(requestRecord.status)) {
-        sendJson(request, response, 400, { error: "This order is already closed." });
-        return;
-      }
-
-      if (requestRecord.paymentStatus === "paid") {
-        sendJson(request, response, 409, {
-          error: "This order has already been paid. Contact support or an admin before cancelling so the payment can be reviewed.",
-        });
-        return;
-      }
-
-      if (requestRecord.paymentStatus === "pending") {
-        sendJson(request, response, 409, {
-          error: "Stripe checkout is still pending. Finish or cancel checkout in Stripe before cancelling this order.",
-        });
-        return;
-      }
-
-      const now = new Date().toISOString();
-      requestRecord.status = "cancelled";
-      requestRecord.cancelledAt = now;
-      requestRecord.closedBy = auth.user.id;
-
-      auth.data.messages[requestId] = auth.data.messages[requestId] || [];
-      auth.data.messages[requestId].push({
-        id: `message-${crypto.randomUUID()}`,
-        senderId: auth.user.id,
-        senderName: auth.user.name,
-        text: "The requester cancelled this order.",
-        createdAt: now,
-      });
-      await writeData(auth.data);
-      sendJson(request, response, 200, { request: decorateRequest(requestRecord, auth.data) });
-      return;
-    }
-
     const routeContext = {
       request,
       response,
@@ -1432,6 +765,9 @@ const server = http.createServer(async (request, response) => {
         sendJson(request, routeResponse, statusCode, payload, extraHeaders),
       readBody: (routeRequest = request) => readBody(routeRequest, getBodyLimitForRequest(routeRequest, url)),
       writeData,
+      dataRepository,
+      readData,
+      logBackendEvent,
       sanitizeUser,
       canAccessRequest,
       decorateRequest,
@@ -1441,6 +777,7 @@ const server = http.createServer(async (request, response) => {
       getStripeCheckoutSession,
     };
 
+    if (await handleRequestRoute(routeContext)) return;
     if (await handleMessagingRoute(routeContext)) return;
     if (await handleRatingsRoute(routeContext)) return;
     if (await handleProfileRoute(routeContext)) return;

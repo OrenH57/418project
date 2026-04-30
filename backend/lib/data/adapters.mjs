@@ -125,9 +125,8 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
       Object.assign(user, clone(updates));
       return { matchedCount: 1 };
     },
-    async replaceSessionsForUser(userId, session) {
+    async createSessionForUser(userId, session) {
       const previousSessionCount = state.sessions.filter((entry) => entry.userId === userId).length;
-      state.sessions = state.sessions.filter((entry) => entry.userId !== userId);
       state.sessions.push(clone(session));
       return { previousSessionCount };
     },
@@ -187,6 +186,83 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
     async updateRequestById(requestId, updates) {
       const request = state.requests.find((entry) => entry.id === requestId);
       if (request) Object.assign(request, clone(updates));
+      return { matchedCount: request ? 1 : 0, modifiedCount: request ? 1 : 0 };
+    },
+    async flagRequestsForSuspendedUser(userId, reason) {
+      let modifiedCount = 0;
+      for (const request of state.requests) {
+        if (request.userId !== userId && request.acceptedBy !== userId) continue;
+        request.flagged = true;
+        request.flaggedReason = reason;
+        if (request.moderationStatus === "clear") {
+          request.moderationStatus = "flagged";
+        }
+        modifiedCount += 1;
+      }
+      return { modifiedCount };
+    },
+    async findRequestById(requestId) {
+      return clone(state.requests.find((entry) => entry.id === requestId) || null);
+    },
+    async acceptRequestAtomic(requestId, courierId) {
+      const request = state.requests.find((entry) =>
+        entry.id === requestId &&
+        entry.status === "open" &&
+        !entry.acceptedBy &&
+        entry.userId !== courierId &&
+        entry.moderationStatus !== "removed"
+      );
+      if (!request) return { modifiedCount: 0, request: null };
+      request.status = "accepted";
+      request.acceptedBy = courierId;
+      return { modifiedCount: 1, request: clone(request) };
+    },
+    async cancelRequestAtomic(requestId, userId, updates) {
+      const request = state.requests.find((entry) =>
+        entry.id === requestId &&
+        entry.userId === userId &&
+        ["open", "accepted"].includes(entry.status) &&
+        !["paid", "pending"].includes(entry.paymentStatus)
+      );
+      if (!request) return { modifiedCount: 0, request: null };
+      Object.assign(request, clone(updates));
+      return { modifiedCount: 1, request: clone(request) };
+    },
+    async confirmCourierDeliveryAtomic(requestId, courierId, updates) {
+      const request = state.requests.find((entry) =>
+        entry.id === requestId &&
+        entry.acceptedBy === courierId &&
+        entry.status === "accepted" &&
+        entry.paymentStatus === "paid" &&
+        !entry.deliveryConfirmedByCourier
+      );
+      if (!request) return { modifiedCount: 0, request: null };
+      Object.assign(request, clone(updates));
+      return { modifiedCount: 1, request: clone(request) };
+    },
+    async confirmRequesterReceiptAtomic(requestId, requesterId, updates) {
+      const request = state.requests.find((entry) =>
+        entry.id === requestId &&
+        entry.userId === requesterId &&
+        entry.status === "accepted" &&
+        entry.paymentStatus === "paid" &&
+        entry.deliveryConfirmedByCourier &&
+        !entry.receivedConfirmedByRequester
+      );
+      if (!request) return { modifiedCount: 0, request: null };
+      Object.assign(request, clone(updates));
+      if (request.status === "completed" && request.acceptedBy) {
+        const courier = state.users.find((entry) => entry.id === request.acceptedBy);
+        if (courier) {
+          const earnings =
+            request.serviceType === "discount" && typeof request.runnerEarnings === "number"
+              ? request.runnerEarnings
+              : Number.parseFloat(request.payment || "0");
+          courier.completedJobs = Number(courier.completedJobs || 0) + 1;
+          courier.earnings = Number((Number(courier.earnings || 0) + (Number.isFinite(earnings) ? earnings : 0)).toFixed(2));
+        }
+      }
+      return { modifiedCount: 1, request: clone(request) };
     },
     async deleteRequestById(requestId) {
       state.requests = state.requests.filter((request) => request.id !== requestId);
@@ -197,6 +273,35 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
     },
     async insertMessages(requestId, messages) {
       state.messages[requestId] = clone(messages);
+    },
+    async appendMessage(requestId, message) {
+      state.messages[requestId] = state.messages[requestId] || [];
+      state.messages[requestId].push(clone(message));
+    },
+    async upsertRatingAndRecalculate(ratingRecord) {
+      const index = state.ratings.findIndex(
+        (entry) => entry.requestId === ratingRecord.requestId && entry.authorUserId === ratingRecord.authorUserId,
+      );
+      if (index >= 0) {
+        state.ratings[index] = clone(ratingRecord);
+      } else {
+        state.ratings.push(clone(ratingRecord));
+      }
+
+      const userRatings = state.ratings.filter((entry) => entry.targetUserId === ratingRecord.targetUserId);
+      const averageRating = userRatings.reduce((total, entry) => total + entry.rating, 0) / userRatings.length;
+      const targetUser = state.users.find((entry) => entry.id === ratingRecord.targetUserId);
+      if (targetUser) targetUser.rating = Number(averageRating.toFixed(1));
+      return { rating: clone(ratingRecord), targetUser: clone(targetUser || null) };
+    },
+    async markRequestPaidByCheckoutSession(checkoutSessionId, updates) {
+      const request = state.requests.find((entry) =>
+        entry.stripeCheckoutSessionId === checkoutSessionId &&
+        entry.paymentStatus !== "paid"
+      );
+      if (!request) return { modifiedCount: 0, request: null };
+      Object.assign(request, clone(updates));
+      return { modifiedCount: 1, request: clone(request) };
     },
     async deleteMessagesByRequestId(requestId) {
       delete state.messages[requestId];
@@ -232,6 +337,13 @@ export function createTempFileDataAdapter({ dataFile, seedData = cloneSeedData()
     await fs.writeFile(dataFile, JSON.stringify(data, null, 2));
   }
 
+  async function mutate(methodName, ...args) {
+    await load();
+    const result = await memory[methodName](...args);
+    await persist();
+    return result;
+  }
+
   return {
     ...memory,
     async readSnapshot() {
@@ -241,6 +353,63 @@ export function createTempFileDataAdapter({ dataFile, seedData = cloneSeedData()
     async writeSnapshot(data) {
       await memory.writeSnapshot(data);
       await persist();
+    },
+    async createSessionForUser(...args) {
+      return await mutate("createSessionForUser", ...args);
+    },
+    async insertUser(...args) {
+      return await mutate("insertUser", ...args);
+    },
+    async updateUserById(...args) {
+      return await mutate("updateUserById", ...args);
+    },
+    async deleteSessionByToken(...args) {
+      return await mutate("deleteSessionByToken", ...args);
+    },
+    async insertRequest(...args) {
+      return await mutate("insertRequest", ...args);
+    },
+    async updateRequestById(...args) {
+      return await mutate("updateRequestById", ...args);
+    },
+    async flagRequestsForSuspendedUser(...args) {
+      return await mutate("flagRequestsForSuspendedUser", ...args);
+    },
+    async acceptRequestAtomic(...args) {
+      return await mutate("acceptRequestAtomic", ...args);
+    },
+    async cancelRequestAtomic(...args) {
+      return await mutate("cancelRequestAtomic", ...args);
+    },
+    async confirmCourierDeliveryAtomic(...args) {
+      return await mutate("confirmCourierDeliveryAtomic", ...args);
+    },
+    async confirmRequesterReceiptAtomic(...args) {
+      return await mutate("confirmRequesterReceiptAtomic", ...args);
+    },
+    async deleteRequestById(...args) {
+      return await mutate("deleteRequestById", ...args);
+    },
+    async deleteRequestsByIds(...args) {
+      return await mutate("deleteRequestsByIds", ...args);
+    },
+    async insertMessages(...args) {
+      return await mutate("insertMessages", ...args);
+    },
+    async appendMessage(...args) {
+      return await mutate("appendMessage", ...args);
+    },
+    async upsertRatingAndRecalculate(...args) {
+      return await mutate("upsertRatingAndRecalculate", ...args);
+    },
+    async markRequestPaidByCheckoutSession(...args) {
+      return await mutate("markRequestPaidByCheckoutSession", ...args);
+    },
+    async deleteMessagesByRequestId(...args) {
+      return await mutate("deleteMessagesByRequestId", ...args);
+    },
+    async deleteMessagesByRequestIds(...args) {
+      return await mutate("deleteMessagesByRequestIds", ...args);
     },
   };
 }
@@ -256,26 +425,20 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     orderCreationLocks: db.collection("orderCreationLocks"),
   };
 
-  async function removeDuplicateSessionsForUniqueUserIndex() {
-    const sessions = await collections.sessions
-      .find({ userId: { $nin: [null, ""] } })
-      .sort({ userId: 1, createdAt: -1, expiresAt: -1 })
-      .toArray();
-    const seenUserIds = new Set();
-    const duplicateSessionIds = [];
+  async function ensureNonUniqueSessionUserIndex() {
+    const indexes = await collections.sessions.listIndexes().toArray();
+    const userIdIndexes = indexes.filter((entry) => {
+      const keyEntries = Object.entries(entry.key || {});
+      return keyEntries.length === 1 && entry.key?.userId === 1;
+    });
 
-    for (const session of sessions) {
-      if (!seenUserIds.has(session.userId)) {
-        seenUserIds.add(session.userId);
-        continue;
+    for (const index of userIdIndexes) {
+      if (index.unique && index.name) {
+        await collections.sessions.dropIndex(index.name);
       }
-
-      duplicateSessionIds.push(session._id);
     }
 
-    if (duplicateSessionIds.length) {
-      await collections.sessions.deleteMany({ _id: { $in: duplicateSessionIds } });
-    }
+    await ensureIndex(collections.sessions, { userId: 1 });
   }
 
   return {
@@ -307,9 +470,9 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     async ensureIndexes({ skipUserUniqueIndexes = false } = {}) {
       await ensureIndex(collections.requests, { id: 1 }, { unique: true });
       await ensureIndex(collections.sessions, { token: 1 }, { unique: true });
-      await removeDuplicateSessionsForUniqueUserIndex();
-      await ensureIndex(collections.sessions, { userId: 1 }, { unique: true });
+      await ensureNonUniqueSessionUserIndex();
       await ensureIndex(collections.messages, { requestId: 1 }, { unique: true });
+      await ensureIndex(collections.ratings, { requestId: 1, authorUserId: 1 }, { unique: true });
       await ensureIndex(collections.idempotencyKeys, { userId: 1, key: 1 }, { unique: true });
       await ensureIndex(collections.idempotencyKeys, { expiresAt: 1 }, { expireAfterSeconds: 0 });
       await ensureIndex(collections.orderCreationLocks, { userId: 1 }, { unique: true });
@@ -395,9 +558,10 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     async updateUserById(userId, updates) {
       return await collections.users.updateOne({ id: userId }, { $set: updates });
     },
-    async replaceSessionsForUser(userId, session) {
-      const result = await collections.sessions.replaceOne({ userId }, session, { upsert: true });
-      return { previousSessionCount: result.matchedCount || 0 };
+    async createSessionForUser(userId, session) {
+      const previousSessionCount = await collections.sessions.countDocuments({ userId });
+      await collections.sessions.insertOne(session);
+      return { previousSessionCount };
     },
     async findSessionByToken(token) {
       return await collections.sessions.findOne({ token });
@@ -451,7 +615,102 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
       await collections.requests.insertOne(requestRecord);
     },
     async updateRequestById(requestId, updates) {
-      await collections.requests.updateOne({ id: requestId }, { $set: updates });
+      return await collections.requests.updateOne({ id: requestId }, { $set: updates });
+    },
+    async flagRequestsForSuspendedUser(userId, reason) {
+      const matchUser = { $or: [{ userId }, { acceptedBy: userId }] };
+      const result = await collections.requests.updateMany(matchUser, {
+        $set: {
+          flagged: true,
+          flaggedReason: reason,
+        },
+      });
+      await collections.requests.updateMany(
+        { ...matchUser, moderationStatus: "clear" },
+        { $set: { moderationStatus: "flagged" } },
+      );
+      return result;
+    },
+    async findRequestById(requestId) {
+      return await collections.requests.findOne({ id: requestId });
+    },
+    async acceptRequestAtomic(requestId, courierId) {
+      const result = await collections.requests.findOneAndUpdate(
+        {
+          id: requestId,
+          status: "open",
+          acceptedBy: null,
+          userId: { $ne: courierId },
+          moderationStatus: { $ne: "removed" },
+        },
+        { $set: { status: "accepted", acceptedBy: courierId } },
+        { returnDocument: "after" },
+      );
+      const requestRecord = result?.value || result;
+      return { modifiedCount: requestRecord ? 1 : 0, request: requestRecord || null };
+    },
+    async cancelRequestAtomic(requestId, userId, updates) {
+      const result = await collections.requests.findOneAndUpdate(
+        {
+          id: requestId,
+          userId,
+          status: { $in: ["open", "accepted"] },
+          paymentStatus: { $nin: ["paid", "pending"] },
+          moderationStatus: { $ne: "removed" },
+        },
+        { $set: updates },
+        { returnDocument: "after" },
+      );
+      const requestRecord = result?.value || result;
+      return { modifiedCount: requestRecord ? 1 : 0, request: requestRecord || null };
+    },
+    async confirmCourierDeliveryAtomic(requestId, courierId, updates) {
+      const result = await collections.requests.findOneAndUpdate(
+        {
+          id: requestId,
+          acceptedBy: courierId,
+          status: "accepted",
+          paymentStatus: "paid",
+          deliveryConfirmedByCourier: { $ne: true },
+          moderationStatus: { $ne: "removed" },
+        },
+        { $set: updates },
+        { returnDocument: "after" },
+      );
+      const requestRecord = result?.value || result;
+      return { modifiedCount: requestRecord ? 1 : 0, request: requestRecord || null };
+    },
+    async confirmRequesterReceiptAtomic(requestId, requesterId, updates) {
+      const result = await collections.requests.findOneAndUpdate(
+        {
+          id: requestId,
+          userId: requesterId,
+          status: "accepted",
+          paymentStatus: "paid",
+          deliveryConfirmedByCourier: true,
+          receivedConfirmedByRequester: { $ne: true },
+          moderationStatus: { $ne: "removed" },
+        },
+        { $set: updates },
+        { returnDocument: "after" },
+      );
+      const requestRecord = result?.value || result;
+      if (requestRecord?.status === "completed" && requestRecord.acceptedBy) {
+        const earnings =
+          requestRecord.serviceType === "discount" && typeof requestRecord.runnerEarnings === "number"
+            ? requestRecord.runnerEarnings
+            : Number.parseFloat(requestRecord.payment || "0");
+        await collections.users.updateOne(
+          { id: requestRecord.acceptedBy },
+          {
+            $inc: {
+              completedJobs: 1,
+              earnings: Number.isFinite(earnings) ? earnings : 0,
+            },
+          },
+        );
+      }
+      return { modifiedCount: requestRecord ? 1 : 0, request: requestRecord || null };
     },
     async deleteRequestById(requestId) {
       await collections.requests.deleteOne({ id: requestId });
@@ -461,6 +720,38 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     },
     async insertMessages(requestId, messages) {
       await collections.messages.insertOne({ requestId, messages });
+    },
+    async appendMessage(requestId, message) {
+      await collections.messages.updateOne(
+        { requestId },
+        { $push: { messages: message } },
+        { upsert: true },
+      );
+    },
+    async upsertRatingAndRecalculate(ratingRecord) {
+      await collections.ratings.updateOne(
+        { requestId: ratingRecord.requestId, authorUserId: ratingRecord.authorUserId },
+        { $set: ratingRecord },
+        { upsert: true },
+      );
+      const userRatings = await collections.ratings.find({ targetUserId: ratingRecord.targetUserId }).toArray();
+      const averageRating = userRatings.reduce((total, entry) => total + Number(entry.rating || 0), 0) / userRatings.length;
+      const rating = Number(averageRating.toFixed(1));
+      await collections.users.updateOne({ id: ratingRecord.targetUserId }, { $set: { rating } });
+      const targetUser = await collections.users.findOne({ id: ratingRecord.targetUserId });
+      return { rating: ratingRecord, targetUser };
+    },
+    async markRequestPaidByCheckoutSession(checkoutSessionId, updates) {
+      const result = await collections.requests.findOneAndUpdate(
+        {
+          stripeCheckoutSessionId: checkoutSessionId,
+          paymentStatus: { $ne: "paid" },
+        },
+        { $set: updates },
+        { returnDocument: "after" },
+      );
+      const requestRecord = result?.value || result;
+      return { modifiedCount: requestRecord ? 1 : 0, request: requestRecord || null };
     },
     async deleteMessagesByRequestId(requestId) {
       await collections.messages.deleteOne({ requestId });

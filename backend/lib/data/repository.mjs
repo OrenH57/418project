@@ -74,7 +74,7 @@ export function createDataRepository(adapter, { log = () => {} } = {}) {
   }
 
   async function replaceUserSession(userId, session) {
-    const result = await adapter.replaceSessionsForUser(userId, session);
+    const result = await adapter.createSessionForUser(userId, session);
     log("session.created", {
       userId,
       previousSessionCount: result.previousSessionCount || 0,
@@ -134,8 +134,20 @@ export function createDataRepository(adapter, { log = () => {} } = {}) {
     countActiveRequestsByUser: (userId) => adapter.countActiveRequestsByUser(userId),
     insertRequest: (requestRecord) => adapter.insertRequest(requestRecord),
     updateRequestById: (requestId, updates) => adapter.updateRequestById(requestId, updates),
+    flagRequestsForSuspendedUser: (userId, reason) => adapter.flagRequestsForSuspendedUser(userId, reason),
+    findRequestById: (requestId) => adapter.findRequestById(requestId),
+    acceptRequestAtomic: (requestId, courierId) => adapter.acceptRequestAtomic(requestId, courierId),
+    cancelRequestAtomic: (requestId, userId, updates) => adapter.cancelRequestAtomic(requestId, userId, updates),
+    confirmCourierDeliveryAtomic: (requestId, courierId, updates) =>
+      adapter.confirmCourierDeliveryAtomic(requestId, courierId, updates),
+    confirmRequesterReceiptAtomic: (requestId, requesterId, updates) =>
+      adapter.confirmRequesterReceiptAtomic(requestId, requesterId, updates),
     deleteRequestById: (requestId) => adapter.deleteRequestById(requestId),
     insertMessages: (requestId, messages) => adapter.insertMessages(requestId, messages),
+    appendMessage: (requestId, message) => adapter.appendMessage(requestId, message),
     deleteMessagesByRequestId: (requestId) => adapter.deleteMessagesByRequestId(requestId),
+    upsertRatingAndRecalculate: (ratingRecord) => adapter.upsertRatingAndRecalculate(ratingRecord),
+    markRequestPaidByCheckoutSession: (checkoutSessionId, updates) =>
+      adapter.markRequestPaidByCheckoutSession(checkoutSessionId, updates),
   };
 }

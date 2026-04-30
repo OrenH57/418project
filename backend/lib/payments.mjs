@@ -1,7 +1,8 @@
 // File purpose:
-// Stripe checkout helper for the local backend.
+// Stripe checkout and webhook helpers for the local backend.
 
-import { getAppUrl, getStripeSecretKey } from "./config.mjs";
+import crypto from "node:crypto";
+import { getAppUrl, getStripeSecretKey, getStripeWebhookSecret } from "./config.mjs";
 
 export async function createStripeCheckoutSession({ amount, requestId, requesterEmail, description, request }) {
   const stripeSecretKey = getStripeSecretKey();
@@ -60,4 +61,47 @@ export async function getStripeCheckoutSession(sessionId) {
   }
 
   return payload;
+}
+
+function parseStripeSignature(signatureHeader) {
+  const parts = String(signatureHeader || "").split(",");
+  const result = { timestamp: "", signatures: [] };
+
+  for (const part of parts) {
+    const [key, value] = part.split("=");
+    if (key === "t") result.timestamp = value || "";
+    if (key === "v1" && value) result.signatures.push(value);
+  }
+
+  return result;
+}
+
+function safeEqualHex(left, right) {
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function verifyStripeWebhookPayload(rawBody, signatureHeader) {
+  const webhookSecret = getStripeWebhookSecret();
+
+  if (!webhookSecret) {
+    throw new Error("Stripe webhook signing secret is not configured.");
+  }
+
+  const { timestamp, signatures } = parseStripeSignature(signatureHeader);
+  if (!timestamp || !signatures.length) {
+    throw new Error("Stripe webhook signature is missing.");
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", webhookSecret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  if (!signatures.some((signature) => safeEqualHex(expectedSignature, signature))) {
+    throw new Error("Stripe webhook signature is invalid.");
+  }
+
+  return JSON.parse(rawBody);
 }

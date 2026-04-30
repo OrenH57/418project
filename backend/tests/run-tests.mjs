@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -23,8 +24,10 @@ const {
 } = await import("../lib/requests.mjs");
 const { getDeliveryPricingForLocation } = await import("../lib/deliveryPricing.mjs");
 const { buildPaymentTotal, formatPaymentAmount, parseOptionalTip } = await import("../lib/paymentPolicy.mjs");
+const { verifyStripeWebhookPayload } = await import("../lib/payments.mjs");
 const { buildAdminOverview } = await import("../lib/admin.mjs");
 const { handlePaymentsRoute, handleRatingsRoute } = await import("../lib/routeGroups.mjs");
+const { handleRequestRoute } = await import("../routes/requestRoutes.mjs");
 const {
   IDEMPOTENCY_TTL_MS,
   createIdempotencyExpiry,
@@ -340,7 +343,7 @@ await runTest("repository rejects duplicate user email and id inserts", async ()
   await assert.rejects(() => repository.insertUser({ ...user, email: "other.email@albany.edu" }), { code: 11000 });
 });
 
-await runTest("repository replaces sessions for repeated login and logout", async () => {
+await runTest("repository keeps separate sessions for repeated login and logout", async () => {
   const repository = createDataRepository(createMemoryDataAdapter({
     users: [
       {
@@ -371,10 +374,256 @@ await runTest("repository replaces sessions for repeated login and logout", asyn
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   });
 
-  assert.equal(await repository.findSessionByToken("first-token"), null);
+  assert.equal((await repository.findSessionByToken("first-token")).userId, "session-loop-user");
   assert.equal((await repository.findSessionByToken("second-token")).userId, "session-loop-user");
   await repository.deleteSessionByToken("second-token");
   assert.equal(await repository.findSessionByToken("second-token"), null);
+});
+
+await runTest("repository accepts a request only once atomically", async () => {
+  const repository = createDataRepository(createMemoryDataAdapter({
+    users: [],
+    sessions: [],
+    requests: [
+      {
+        id: "request-atomic-accept",
+        userId: "requester-atomic",
+        serviceType: "food",
+        pickup: "Starbucks",
+        destination: "State Quad",
+        time: "Now",
+        payment: "3.99",
+        paymentStatus: "paid",
+        status: "open",
+        acceptedBy: null,
+        moderationStatus: "clear",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  }));
+
+  const first = await repository.acceptRequestAtomic("request-atomic-accept", "courier-one");
+  const second = await repository.acceptRequestAtomic("request-atomic-accept", "courier-two");
+
+  assert.equal(first.modifiedCount, 1);
+  assert.equal(first.request.acceptedBy, "courier-one");
+  assert.equal(second.modifiedCount, 0);
+});
+
+await runTest("repository appends messages without replacing the conversation", async () => {
+  const repository = createDataRepository(createMemoryDataAdapter({
+    users: [],
+    sessions: [],
+    requests: [],
+    ratings: [],
+    messages: {
+      "request-chat": [{ id: "message-one", text: "first" }],
+    },
+    restaurants: [],
+  }));
+
+  await repository.appendMessage("request-chat", { id: "message-two", text: "second" });
+  const data = await repository.readData();
+
+  assert.deepEqual(data.messages["request-chat"].map((message) => message.id), ["message-one", "message-two"]);
+});
+
+await runTest("repository completes a request once and increments courier earnings once", async () => {
+  const repository = createDataRepository(createMemoryDataAdapter({
+    users: [
+      {
+        id: "courier-complete",
+        name: "Courier Complete",
+        email: "courier.complete@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "courier",
+        completedJobs: 0,
+        earnings: 0,
+      },
+    ],
+    sessions: [],
+    requests: [
+      {
+        id: "request-complete-once",
+        userId: "requester-complete",
+        serviceType: "food",
+        pickup: "Starbucks",
+        destination: "State Quad",
+        time: "Now",
+        payment: "4.99",
+        paymentStatus: "paid",
+        status: "accepted",
+        acceptedBy: "courier-complete",
+        deliveryConfirmedByCourier: true,
+        receivedConfirmedByRequester: false,
+        moderationStatus: "clear",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  }));
+
+  const first = await repository.confirmRequesterReceiptAtomic("request-complete-once", "requester-complete", {
+    receivedConfirmedByRequester: true,
+    receivedAt: new Date().toISOString(),
+    status: "completed",
+    completedAt: new Date().toISOString(),
+    closedBy: "requester-complete",
+  });
+  const second = await repository.confirmRequesterReceiptAtomic("request-complete-once", "requester-complete", {
+    receivedConfirmedByRequester: true,
+  });
+  const data = await repository.readData();
+  const courier = data.users.find((user) => user.id === "courier-complete");
+
+  assert.equal(first.modifiedCount, 1);
+  assert.equal(second.modifiedCount, 0);
+  assert.equal(courier.completedJobs, 1);
+  assert.equal(courier.earnings, 4.99);
+});
+
+await runTest("Stripe webhook payload verification rejects bad signatures and accepts valid ones", async () => {
+  const previousSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_WEBHOOK_SECRET = "whsec_test_secret";
+  const rawBody = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: "cs_test" } } });
+  const timestamp = "1234567890";
+  const signature = crypto
+    .createHmac("sha256", process.env.STRIPE_WEBHOOK_SECRET)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  try {
+    assert.equal(
+      verifyStripeWebhookPayload(rawBody, `t=${timestamp},v1=${signature}`).data.object.id,
+      "cs_test",
+    );
+    assert.throws(() => verifyStripeWebhookPayload(rawBody, `t=${timestamp},v1=bad`), /invalid/);
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.STRIPE_WEBHOOK_SECRET;
+    } else {
+      process.env.STRIPE_WEBHOOK_SECRET = previousSecret;
+    }
+  }
+});
+
+await runTest("request route returns public-safe courier listings", async () => {
+  const data = {
+    users: [
+      {
+        id: "route-courier",
+        name: "Route Courier",
+        email: "route.courier@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "courier",
+        foodSafetyVerified: true,
+      },
+      {
+        id: "route-requester",
+        name: "Route Requester",
+        email: "route.requester@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "requester",
+      },
+    ],
+    sessions: [],
+    requests: [
+      {
+        id: "route-open-request",
+        userId: "route-requester",
+        requesterName: "Route Requester",
+        serviceType: "food",
+        pickup: "Starbucks",
+        destination: "State Quad - Private details",
+        deliveryLocationId: "state",
+        deliveryLocationLabel: "State Quad",
+        time: "Now",
+        payment: "3.99",
+        notes: "GET order #1234",
+        status: "open",
+        acceptedBy: null,
+        paymentStatus: "paid",
+        moderationStatus: "clear",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  };
+  const calls = [];
+  const context = {
+    request: { method: "GET" },
+    response: {},
+    url: new URL("http://127.0.0.1:4174/api/requests?mode=courier"),
+    requireUser: async () => ({ data, user: data.users[0] }),
+    sendJson: (_response, statusCode, payload) => calls.push({ statusCode, payload }),
+  };
+
+  assert.equal(await handleRequestRoute(context), true);
+  assert.equal(calls[0].statusCode, 200);
+  assert.equal(calls[0].payload.requests[0].requesterName, "Customer");
+  assert.equal(calls[0].payload.requests[0].destination, "State Quad");
+  assert.equal(calls[0].payload.requests[0].notes, "");
+});
+
+await runTest("request route creates an order through the order service", async () => {
+  const repository = createDataRepository(createMemoryDataAdapter({
+    users: [
+      {
+        id: "route-order-requester",
+        name: "Route Order Requester",
+        email: "route.order.requester@albany.edu",
+        password: hashPassword("demo1234"),
+        role: "requester",
+      },
+    ],
+    sessions: [],
+    requests: [],
+    ratings: [],
+    messages: {},
+    restaurants: [],
+  }));
+  const authData = await repository.readData();
+  const calls = [];
+  const context = {
+    request: { method: "POST" },
+    response: {},
+    url: new URL("http://127.0.0.1:4174/api/requests"),
+    requireUser: async () => ({ data: authData, user: authData.users[0] }),
+    sendJson: (_response, statusCode, payload) => calls.push({ statusCode, payload }),
+    readBody: async () => ({
+      serviceType: "food",
+      pickup: "Starbucks",
+      destination: "Main Library - Main lobby",
+      deliveryLocationId: "library",
+      time: "Now",
+      notes: "GET order screenshot uploaded.",
+      orderScreenshot: "",
+      tipAmount: "",
+      startCheckout: false,
+    }),
+    dataRepository: repository,
+    createStripeCheckoutSession: async () => {
+      throw new Error("Stripe checkout should not start for this test.");
+    },
+    logBackendEvent: () => {},
+  };
+
+  assert.equal(await handleRequestRoute(context), true);
+  assert.equal(calls[0].statusCode, 201);
+  assert.equal(calls[0].payload.request.pickup, "Starbucks");
+  assert.equal(calls[0].payload.request.payment, "3.99");
+
+  const data = await repository.readData();
+  assert.equal(data.requests.length, 1);
+  assert.equal(data.requests[0].deliveryLocationId, "library");
+  assert.equal(data.messages[data.requests[0].id][0].text, "Food delivery request posted for Starbucks.");
 });
 
 await runTest("readData removes expired and orphaned sessions", async () => {
