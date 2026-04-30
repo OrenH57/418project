@@ -39,9 +39,14 @@ const demoAccounts = [
 const baseUrl = import.meta.env.BASE_URL;
 
 const authRestaurantImages = [
+  { name: "Morris's Cafe", src: `${baseUrl}landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg` },
   { name: "Baba's Pizza", src: `${baseUrl}landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg` },
   { name: "The Corner Deli", src: `${baseUrl}landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg` },
+  { name: "Umai Fusion", src: `${baseUrl}landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg` },
   { name: "The Spread", src: `${baseUrl}landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg` },
+  { name: "Greens To Go", src: `${baseUrl}landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg` },
+  { name: "Zoca", src: `${baseUrl}landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg` },
+  { name: "Jamal's Chicken", src: `${baseUrl}landing-food/20c98794-cc03-4203-819f-707dcf5cbfdb.jpeg` },
   { name: "The Halal Shack", src: `${baseUrl}landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg` },
 ];
 
@@ -222,45 +227,16 @@ export function AuthPage() {
             </div>
 
             <div className="mt-4 hidden sm:block sm:mt-6">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(13rem,16rem)] lg:items-stretch">
-                <div className="rounded-2xl border border-white/15 bg-white/8 p-4 sm:p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/70">How CampusConnect works</p>
-                  <div className="mt-4 grid gap-3">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">1</span>
-                      <div>
-                        <p className="font-semibold">Order food in GET</p>
-                        <p className="mt-0.5 text-sm text-white/78">Students keep using the campus dining app they already know.</p>
+              <div className="aspect-square overflow-hidden rounded-[2rem] border border-white/15 bg-white/10 p-3 shadow-[0_22px_50px_rgba(20,10,18,0.18)]">
+                <div className="grid h-full grid-cols-3 grid-rows-3 gap-3">
+                  {authRestaurantImages.map((image) => (
+                    <div key={image.name} className="relative overflow-hidden rounded-[1.15rem] bg-white/10">
+                      <img alt={image.name} className="h-full w-full object-cover" src={image.src} />
+                      <div className="absolute inset-x-0 bottom-0 bg-black/48 px-2 py-1.5 text-center text-xs font-medium text-white">
+                        {image.name}
                       </div>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">2</span>
-                      <div>
-                        <p className="font-semibold">Post the delivery request</p>
-                        <p className="mt-0.5 text-sm text-white/78">CampusConnect shares pickup, drop-off, payment, and handoff details.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">3</span>
-                      <div>
-                        <p className="font-semibold">Meet a verified courier</p>
-                        <p className="mt-0.5 text-sm text-white/78">A UAlbany student courier brings the order across campus.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="aspect-square overflow-hidden rounded-2xl border border-white/15 bg-white/10 p-2">
-                  <div className="grid h-full grid-cols-2 grid-rows-2 gap-2">
-                    {authRestaurantImages.map((image) => (
-                      <div key={image.name} className="relative overflow-hidden rounded-xl bg-white/10">
-                        <img alt={image.name} className="h-full w-full object-cover" src={image.src} />
-                        <div className="absolute inset-x-0 bottom-0 bg-black/48 px-2 py-1 text-center text-[10px] font-medium text-white">
-                          {image.name}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
