@@ -5,7 +5,7 @@
 import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
-import { Shield, UtensilsCrossed, Bike, Phone, ImagePlus } from "lucide-react";
+import { Phone, ImagePlus } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -34,20 +34,6 @@ const demoAccounts = [
   { role: "Requester", email: "ariana.green@albany.edu", password: "demo1234" },
   { role: "Courier", email: "marcus.hall@albany.edu", password: "demo1234" },
   { role: "Admin", email: "jordan.reyes@albany.edu", password: "demo1234" },
-];
-
-const baseUrl = import.meta.env.BASE_URL;
-
-const authRestaurantImages = [
-  { name: "Morris's Cafe", src: `${baseUrl}landing-food/0933ac4c-fbd5-4828-8d24-8f985a49329f.jpeg` },
-  { name: "Baba's Pizza", src: `${baseUrl}landing-food/d92086c8-f4c1-45e5-a4b9-d2f3e2fbf63c.jpeg` },
-  { name: "The Corner Deli", src: `${baseUrl}landing-food/e76d7c96-352d-4692-be92-5e2a073fa442.jpeg` },
-  { name: "Umai Fusion", src: `${baseUrl}landing-food/98813c20-3e13-40b0-bf13-da6aa86408c3.jpeg` },
-  { name: "The Spread", src: `${baseUrl}landing-food/19021f97-d322-4134-8ea8-8bc9f7f7df86.jpeg` },
-  { name: "Greens To Go", src: `${baseUrl}landing-food/f0a40720-b692-44f6-aa4b-64dd52bca0b6.jpeg` },
-  { name: "Zoca", src: `${baseUrl}landing-food/b0973875-9e47-47f2-af83-7d02a8c5d895.jpeg` },
-  { name: "Jamal's Chicken", src: `${baseUrl}landing-food/20c98794-cc03-4203-819f-707dcf5cbfdb.jpeg` },
-  { name: "The Halal Shack", src: `${baseUrl}landing-food/5872e9d5-d87d-4c9d-914d-489c4746b7aa.jpeg` },
 ];
 
 function getSafeNextPath(value: string | null) {
@@ -196,54 +182,9 @@ export function AuthPage() {
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
 
   return (
-    <div className="min-h-screen bg-[var(--page-bg)] px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mx-auto grid max-w-7xl items-start gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(24rem,28rem)] xl:gap-8">
-        <Card className="order-2 overflow-hidden border-none bg-[var(--brand-maroon)] text-white shadow-xl xl:order-1">
-          <CardContent className="p-5 sm:p-8 lg:p-9">
-            <Badge className="mb-3 bg-white/15 text-white sm:mb-4">UAlbany Prototype</Badge>
-            <h1 className="max-w-xl text-2xl font-bold leading-tight sm:text-4xl">
-              Student delivery for Campus Center food orders across campus.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm text-white/85 sm:mt-4 sm:text-base">
-              CampusConnect is built for students who are studying, working late, or relaxing in their dorm and want food brought to them. Food orders still happen in GET first, then another student can deliver them across campus.
-            </p>
-
-            <div className="mt-5 hidden gap-3 sm:grid md:grid-cols-3 sm:gap-4 sm:mt-8">
-              <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
-                <UtensilsCrossed className="mb-3 h-5 w-5" />
-                <p className="font-semibold">Campus Center pickup</p>
-                <p className="mt-1 text-sm text-white/80">Order in GET first, then request delivery here for Starbucks, Baba&apos;s Pizza, and more.</p>
-              </div>
-              <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
-                <Bike className="mb-3 h-5 w-5" />
-                <p className="font-semibold">Courier mode</p>
-                <p className="mt-1 text-sm text-white/80">Couriers sign in directly to accept nearby food runs and help students across campus.</p>
-              </div>
-              <div className="rounded-2xl border border-white/15 bg-white/8 p-4">
-                <Shield className="mb-3 h-5 w-5" />
-                <p className="font-semibold">.edu-only access</p>
-                <p className="mt-1 text-sm text-white/80">Restricting accounts to campus email improves trust and safety.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 hidden sm:block sm:mt-6">
-              <div className="aspect-square overflow-hidden rounded-[2rem] border border-white/15 bg-white/10 p-3 shadow-[0_22px_50px_rgba(20,10,18,0.18)]">
-                <div className="grid h-full grid-cols-3 grid-rows-3 gap-3">
-                  {authRestaurantImages.map((image) => (
-                    <div key={image.name} className="relative overflow-hidden rounded-[1.15rem] bg-white/10">
-                      <img alt={image.name} className="h-full w-full object-cover" src={image.src} />
-                      <div className="absolute inset-x-0 bottom-0 bg-black/48 px-2 py-1.5 text-center text-xs font-medium text-white">
-                        {image.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="order-1 border-[var(--border)] bg-white shadow-sm xl:order-2 xl:sticky xl:top-6">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] px-4 py-8 sm:px-6">
+      <div className="w-full max-w-md">
+        <Card className="border-[var(--border)] bg-white shadow-sm">
           <CardHeader className="p-5 sm:p-6">
             <div className="grid grid-cols-2 gap-2">
               <Button className="w-full" disabled={busy} onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
@@ -264,14 +205,6 @@ export function AuthPage() {
                 Back to the product overview
               </Link>
             </p>
-            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-              <Badge variant="secondary">{currentSideCopy.badge}</Badge>
-              <p className="mt-3 font-semibold text-[var(--ink)]">{currentSideCopy.title}</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">{currentSideCopy.description}</p>
-              <p className="mt-3 text-xs text-[var(--muted)]">
-                You can still switch paths later if you need the other side.
-              </p>
-            </div>
           </CardHeader>
           <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
             <form
