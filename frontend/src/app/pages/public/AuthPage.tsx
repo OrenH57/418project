@@ -12,7 +12,6 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { LandingHeroGraphic } from "../../components/marketing/LandingHeroGraphic";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
 import { getDefaultPath, setStoredView } from "../../lib/viewMode";
@@ -213,8 +212,31 @@ export function AuthPage() {
               </div>
             </div>
 
-            <div className="mt-4 hidden sm:block sm:mt-6">
-              <LandingHeroGraphic />
+            <div className="mt-4 hidden rounded-2xl border border-white/15 bg-white/8 p-4 sm:block sm:mt-6 sm:p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70">How CampusConnect works</p>
+              <div className="mt-4 grid gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">1</span>
+                  <div>
+                    <p className="font-semibold">Order food in GET</p>
+                    <p className="mt-0.5 text-sm text-white/78">Students keep using the campus dining app they already know.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">2</span>
+                  <div>
+                    <p className="font-semibold">Post the delivery request</p>
+                    <p className="mt-0.5 text-sm text-white/78">CampusConnect shares pickup, drop-off, payment, and handoff details.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/14 text-sm font-semibold">3</span>
+                  <div>
+                    <p className="font-semibold">Meet a verified courier</p>
+                    <p className="mt-0.5 text-sm text-white/78">A UAlbany student courier brings the order across campus.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
