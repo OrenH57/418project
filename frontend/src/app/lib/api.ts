@@ -15,12 +15,26 @@ function getApiBase() {
     return configured.replace(/\/$/, "");
   }
 
+  if (
+    typeof window !== "undefined" &&
+    isBrowserLocal &&
+    window.location.port &&
+    window.location.port !== "4174"
+  ) {
+    return "http://127.0.0.1:4174/api";
+  }
+
   return "/api";
 }
 
 const API_BASE = getApiBase();
 export const AUTH_EXPIRED_EVENT = "campus-connect-auth-expired";
-type ApiRequestOptions = RequestInit & { suppressAuthExpired?: boolean };
+type ApiRequestOptions = RequestInit & {
+  suppressAuthExpired?: boolean;
+  retryOnStartup?: boolean;
+};
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+const STARTUP_RETRY_DELAYS_MS = [500, 1_000, 1_500];
 
 export type User = {
   id: string;
@@ -28,6 +42,7 @@ export type User = {
   email: string;
   phone: string;
   role: "requester" | "courier" | "admin";
+  emailVerified: boolean;
   courierMode: boolean;
   ualbanyIdUploaded: boolean;
   ualbanyIdImage?: string;
@@ -145,21 +160,59 @@ export type DeliveryLocationPrice = {
   fee: number;
 };
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 async function request<T>(path: string, options: ApiRequestOptions = {}, token?: string): Promise<T> {
-  const { suppressAuthExpired = false, ...fetchOptions } = options;
+  const { retryOnStartup = false, ...requestOptions } = options;
+  const delays = retryOnStartup ? STARTUP_RETRY_DELAYS_MS : [];
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await requestOnce<T>(path, requestOptions, token);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= delays.length) break;
+      await wait(delays[attempt]);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Request failed.");
+}
+
+async function requestOnce<T>(path: string, options: ApiRequestOptions = {}, token?: string): Promise<T> {
+  const { suppressAuthExpired = false, signal, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  signal?.addEventListener("abort", () => controller.abort(), { once: true });
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       cache: fetchOptions.cache ?? "no-store",
       ...fetchOptions,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(fetchOptions.headers || {}),
       },
     });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("CampusConnect took too long to respond. Make sure the backend is running, then try again.");
+    }
     throw new Error("Could not reach the CampusConnect server. Check that the backend is running and try again.");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 
   let payload: unknown = {};
@@ -195,35 +248,39 @@ export const api = {
     role: "requester" | "courier";
     ualbanyIdImage?: string;
   }) {
-    return request<{ token: string; user: User }>("/auth/signup", {
+    return request<{
+      token: string;
+      user: User;
+      verification?: { required: boolean; delivered: boolean; previewCode: string };
+    }>("/auth/signup", {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
   login(input: { email: string; password: string }) {
-    return request<{ token: string; user: User }>("/auth/login", {
+    return request<{
+      token: string;
+      user: User;
+      verification?: { required: boolean; delivered: boolean; previewCode: string };
+    }>("/auth/login", {
       method: "POST",
+      retryOnStartup: true,
       body: JSON.stringify(input),
     });
+  },
+  verifyEmail(token: string, code: string) {
+    return request<{ user: User }>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }, token);
   },
   logout(token: string) {
     return request<{ ok: true }>("/auth/logout", {
       method: "POST",
     }, token);
   },
-  outlookLogin(input: {
-    idToken: string;
-    role: "requester" | "courier";
-    phone?: string;
-    ualbanyIdImage?: string;
-  }) {
-    return request<{ token: string; user: User }>("/auth/outlook", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
   session(token: string) {
-    return request<{ user: User }>("/session", {}, token);
+    return request<{ user: User }>("/session", { retryOnStartup: true }, token);
   },
   bootstrap(token: string) {
     return request<{

@@ -12,7 +12,6 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { api, AUTH_EXPIRED_EVENT, type User } from "../lib/api";
-import { clearMicrosoftAuthCache } from "../lib/microsoftAuth";
 import { VIEW_KEY } from "../lib/viewMode";
 
 const TOKEN_KEY = "campus-connect-token";
@@ -31,13 +30,7 @@ type AuthContextValue = {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
-  loginWithMicrosoft: (input: {
-    idToken: string;
-    role: "requester" | "courier";
-    phone?: string;
-    ualbanyIdImage?: string;
-  }) => Promise<User>;
+  login: (email: string, password: string) => Promise<{ user: User; verification?: AuthVerification }>;
   signup: (input: {
     name: string;
     email: string;
@@ -45,13 +38,15 @@ type AuthContextValue = {
     password: string;
     role: "requester" | "courier";
     ualbanyIdImage?: string;
-  }) => Promise<User>;
+  }) => Promise<{ user: User; verification?: AuthVerification }>;
+  verifyEmail: (code: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateLocalUser: (user: User) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+type AuthVerification = { required: boolean; delivered: boolean; previewCode: string };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -77,7 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(VIEW_KEY);
     }
     clearAppSessionStorage();
-    clearMicrosoftAuthCache();
   }
 
   function clearSession({ clearView = false } = {}) {
@@ -184,16 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Authentication changed. Please try again.");
         }
         logoutPreviousSession(previousToken, response.token);
-        return response.user;
-      },
-      async loginWithMicrosoft(input) {
-        const { generation, previousToken } = beginAuthAttempt();
-        const response = await api.outlookLogin(input);
-        if (!storeAuthenticatedSession(response.token, response.user, generation)) {
-          throw new Error("Authentication changed. Please try again.");
-        }
-        logoutPreviousSession(previousToken, response.token);
-        return response.user;
+        return { user: response.user, verification: response.verification };
       },
       async signup(input) {
         const { generation, previousToken } = beginAuthAttempt();
@@ -202,6 +187,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Authentication changed. Please try again.");
         }
         logoutPreviousSession(previousToken, response.token);
+        return { user: response.user, verification: response.verification };
+      },
+      async verifyEmail(code) {
+        if (!tokenRef.current) {
+          throw new Error("Sign in again before verifying your email.");
+        }
+        const response = await api.verifyEmail(tokenRef.current, code);
+        setUser(response.user);
+        localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         return response.user;
       },
       logout() {

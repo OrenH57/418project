@@ -4,7 +4,6 @@
 
 import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { useMsal } from "@azure/msal-react";
 import { Phone, ImagePlus } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
@@ -15,7 +14,6 @@ import { Badge } from "../../components/ui/badge";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
 import { getDefaultPath, setStoredView } from "../../lib/viewMode";
-import { isMicrosoftAuthConfigured, microsoftLoginRequest } from "../../lib/microsoftAuth";
 
 const sideCopy = {
   requester: {
@@ -47,8 +45,7 @@ function getSafeNextPath(value: string | null) {
 export function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { instance } = useMsal();
-  const { user, login, loginWithMicrosoft, signup } = useAuth();
+  const { user, login, signup, verifyEmail } = useAuth();
   const sideParam = searchParams.get("side");
   const safeNextPath = getSafeNextPath(searchParams.get("next"));
   const initialEntryView = sideParam === "courier" || safeNextPath.startsWith("/driver-feed") ? "courier" : "requester";
@@ -57,6 +54,8 @@ export function AuthPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationPreviewCode, setVerificationPreviewCode] = useState("");
   const [ualbanyIdImage, setUalbanyIdImage] = useState("");
   const entryView = initialEntryView;
   const [busy, setBusy] = useState(false);
@@ -64,8 +63,9 @@ export function AuthPage() {
   const currentSideCopy = sideCopy[entryView];
   const getPostAuthPath = (nextUser: { role: string }) =>
     nextUser.role === "admin" ? "/admin" : safeNextPath || getDefaultPath(entryView);
+  const hasPendingEmailVerification = Boolean(user && !user.emailVerified);
 
-  if (user) {
+  if (user?.emailVerified) {
     return <Navigate replace to={getPostAuthPath(user)} />;
   }
 
@@ -110,8 +110,13 @@ export function AuthPage() {
 
     try {
       if (mode === "login") {
-        const nextUser = await login(normalizedEmail, password);
+        const { user: nextUser, verification } = await login(normalizedEmail, password);
         setStoredView(entryView);
+        if (verification?.required || !nextUser.emailVerified) {
+          setVerificationPreviewCode(verification?.previewCode || "");
+          toast.success("Enter the verification code sent to your campus email.");
+          return;
+        }
         toast.success("Welcome back to CampusConnect.");
         navigate(getPostAuthPath(nextUser), { replace: true });
       } else {
@@ -120,7 +125,7 @@ export function AuthPage() {
           return;
         }
 
-        const nextUser = await signup({
+        const { user: nextUser, verification } = await signup({
           name: normalizedName,
           email: normalizedEmail,
           phone: phone.trim(),
@@ -129,8 +134,8 @@ export function AuthPage() {
           ualbanyIdImage: entryView === "courier" ? ualbanyIdImage : undefined,
         });
         setStoredView(entryView);
-        toast.success("Account created with your .edu email.");
-        navigate(getPostAuthPath(nextUser), { replace: true });
+        setVerificationPreviewCode(verification?.previewCode || "");
+        toast.success("Account created. Enter the code sent to your campus email.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Authentication failed.");
@@ -140,39 +145,18 @@ export function AuthPage() {
     }
   }
 
-  async function handleMicrosoftLogin() {
-    if (authSubmitLockRef.current) return;
+  async function handleVerifyEmail(event?: FormEvent) {
+    event?.preventDefault();
+    if (authSubmitLockRef.current || !verificationCode.trim()) return;
     authSubmitLockRef.current = true;
     setBusy(true);
 
     try {
-      if (!isMicrosoftAuthConfigured) {
-        throw new Error("Microsoft sign-in is not configured yet. Add the Azure client and tenant IDs in .env.local.");
-      }
-
-      if (mode === "signup" && entryView === "courier" && !ualbanyIdImage) {
-        throw new Error("Upload a photo of your UAlbany ID before opening the courier side.");
-      }
-
-      const response = await instance.loginPopup(microsoftLoginRequest);
-      const idToken = response.idToken;
-
-      if (!idToken) {
-        throw new Error("Microsoft sign-in finished without an ID token.");
-      }
-
-      const nextUser = await loginWithMicrosoft({
-        idToken,
-        role: entryView,
-        phone: phone.trim() || undefined,
-        ualbanyIdImage: entryView === "courier" ? ualbanyIdImage : undefined,
-      });
-
-      setStoredView(entryView);
-      toast.success("Signed in with your UAlbany Microsoft account.");
+      const nextUser = await verifyEmail(verificationCode.trim());
+      toast.success("Campus email verified.");
       navigate(getPostAuthPath(nextUser), { replace: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Microsoft sign-in failed.");
+      toast.error(error instanceof Error ? error.message : "Email verification failed.");
     } finally {
       authSubmitLockRef.current = false;
       setBusy(false);
@@ -185,6 +169,40 @@ export function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] px-4 py-8 sm:px-6">
       <div className="w-full max-w-md">
         <Card className="border-[var(--border)] bg-white shadow-sm">
+          {hasPendingEmailVerification ? (
+            <>
+              <CardHeader className="p-5 sm:p-6">
+                <CardTitle>Verify your campus email</CardTitle>
+                <CardDescription>
+                  Enter the 6-digit code for {user?.email || email.trim().toLowerCase() || "your .edu email"}.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
+                <form className="space-y-4" onSubmit={(event) => void handleVerifyEmail(event)}>
+                  <div>
+                    <Label htmlFor="verification-code">Verification code</Label>
+                    <Input
+                      autoComplete="one-time-code"
+                      id="verification-code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      onChange={(event) => setVerificationCode(event.target.value)}
+                      value={verificationCode}
+                    />
+                  </div>
+                  {verificationPreviewCode ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      Demo code: {verificationPreviewCode}
+                    </p>
+                  ) : null}
+                  <Button className="w-full" disabled={busy || !verificationCode.trim()} size="lg" type="submit">
+                    {busy ? "Please wait..." : "Verify Email"}
+                  </Button>
+                </form>
+              </CardContent>
+            </>
+          ) : (
+          <>
           <CardHeader className="p-5 sm:p-6">
             <div className="grid grid-cols-2 gap-2">
               <Button className="w-full" disabled={busy} onClick={() => setMode("login")} variant={mode === "login" ? "default" : "secondary"}>
@@ -300,26 +318,6 @@ export function AuthPage() {
               {busy ? "Please wait..." : mode === "login" ? "Log In" : "Create Account"}
             </Button>
 
-            <Button
-              className="w-full"
-              disabled={busy || !isMicrosoftAuthConfigured}
-              onClick={() => {
-                void handleMicrosoftLogin();
-              }}
-              size="lg"
-              type="button"
-              variant="secondary"
-            >
-              {busy ? "Please wait..." : "Continue with UAlbany Microsoft"}
-            </Button>
-
-            {!isMicrosoftAuthConfigured ? (
-              <p className="text-xs text-[var(--muted)]">
-                Microsoft sign-in becomes available after `VITE_AZURE_CLIENT_ID` and `VITE_AZURE_TENANT_ID`
-                are added to `.env.local`.
-              </p>
-            ) : null}
-
             <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
               <p className="font-medium text-[var(--ink)]">Demo accounts</p>
               <p className="mt-1 text-xs text-[var(--muted)]">
@@ -339,6 +337,8 @@ export function AuthPage() {
             </div>
             </form>
           </CardContent>
+          </>
+          )}
         </Card>
       </div>
     </div>

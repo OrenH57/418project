@@ -24,5 +24,10 @@ export function ProtectedRoute() {
     return <Navigate replace to={`/auth?next=${encodeURIComponent(nextPath)}`} />;
   }
 
+  if (!user.emailVerified) {
+    const nextPath = `${location.pathname}${location.search}`;
+    return <Navigate replace to={`/auth?verify=1&next=${encodeURIComponent(nextPath)}`} />;
+  }
+
   return <Outlet />;
 }

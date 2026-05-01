@@ -23,11 +23,16 @@ function parseAllowedOrigins() {
   ]);
 }
 
+function isLocalOrigin(origin) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+}
+
 export function getAllowedOrigin(request) {
   const origin = request.headers.origin || "";
   const allowedOrigins = parseAllowedOrigins();
 
   if (origin && allowedOrigins.has(origin)) return origin;
+  if (origin && isLocalOrigin(origin)) return origin;
   if (!origin) return getAppUrl(request);
   return "";
 }

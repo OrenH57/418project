@@ -11,7 +11,11 @@ import { dataFile, loadEnv } from "./lib/config.mjs";
 import { createToken, hashPassword, isCampusEmail, verifyPassword } from "./lib/auth.mjs";
 import { buildAdminOverview, requireAdmin } from "./lib/admin.mjs";
 import { canAccessRequest, decorateRequest } from "./lib/requests.mjs";
-import { verifyMicrosoftIdToken } from "./lib/microsoftAuth.mjs";
+import {
+  createEmailVerificationCode,
+  deliverEmailVerificationCode,
+  isEmailVerificationExpired,
+} from "./lib/emailVerification.mjs";
 import { createStripeCheckoutSession, getStripeCheckoutSession, verifyStripeWebhookPayload } from "./lib/payments.mjs";
 import {
   buildSecurityHeaders,
@@ -241,7 +245,7 @@ function getDuplicateKeyErrorMessage(error) {
 
 function getUserCreationGuardError(user) {
   const validRoles = new Set(["requester", "courier", "admin"]);
-  const validAuthProviders = new Set(["password", "outlook"]);
+  const validAuthProviders = new Set(["password"]);
 
   if (!user?.id) return "User id is required.";
   if (!user.name || typeof user.name !== "string") return "User name is required.";
@@ -278,7 +282,8 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     phone: user.phone || "",
-    authProvider: user.authProvider === "outlook" ? "outlook" : "password",
+    authProvider: "password",
+    emailVerified: Boolean(user.emailVerified),
     role: user.role,
     courierMode: user.courierMode,
     ualbanyIdUploaded: Boolean(user.ualbanyIdUploaded),
@@ -293,6 +298,25 @@ function sanitizeUser(user) {
     completedJobs: user.completedJobs,
     earnings: user.earnings,
   };
+}
+
+async function issueEmailVerificationCode(user) {
+  const code = createEmailVerificationCode();
+  const issuedAt = new Date().toISOString();
+
+  await dataRepository.updateUserById(user.id, {
+    pendingEmailVerificationCode: code,
+    pendingEmailVerificationIssuedAt: issuedAt,
+  });
+
+  user.pendingEmailVerificationCode = code;
+  user.pendingEmailVerificationIssuedAt = issuedAt;
+
+  return await deliverEmailVerificationCode({
+    email: user.email,
+    code,
+    log: logBackendEvent,
+  });
 }
 
 function getToken(request) {
@@ -545,6 +569,7 @@ const server = http.createServer(async (request, response) => {
         ualbanyIdUploaded: Boolean(ualbanyIdImage),
         ualbanyIdImage,
         foodSafetyVerified: false,
+        emailVerified: false,
         notificationsEnabled: false,
         courierOnline: false,
         bio: "New UAlbany student account.",
@@ -581,8 +606,17 @@ const server = http.createServer(async (request, response) => {
         }
         throw error;
       }
+      const verificationDelivery = await issueEmailVerificationCode(user);
       const session = await replaceUserSessionAtomic(user.id);
-      sendJson(request, response, 201, { token: session.token, user: sanitizeUser(user) });
+      sendJson(request, response, 201, {
+        token: session.token,
+        user: sanitizeUser(user),
+        verification: {
+          required: true,
+          delivered: verificationDelivery.delivered,
+          previewCode: verificationDelivery.previewCode,
+        },
+      });
       logBackendEvent("user.created", {
         userId: user.id,
         email: user.email,
@@ -597,147 +631,66 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/auth/outlook") {
-      const body = await readBody(request, getBodyLimitForRequest(request, url));
-      const idToken = String(body.idToken || "").trim();
-      const phone = String(body.phone || "").trim();
-      const role = body.role === "courier" ? "courier" : "requester";
-      const imageResult = validateDataImage(body.ualbanyIdImage, {
-        required: role === "courier",
-        maxBytes: 3 * 1024 * 1024,
-      });
-      const ualbanyIdImage = imageResult.ok ? imageResult.value : "";
-
-      if (!idToken) {
-        sendJson(request, response, 400, { error: "Microsoft ID token is required." });
-        return;
-      }
-
-      if (!imageResult.ok) {
-        sendJson(request, response, 400, { error: imageResult.error });
-        return;
-      }
-
-      const microsoftUser = await verifyMicrosoftIdToken(idToken);
-      const { email, name } = microsoftUser;
-
-      let user = await dataRepository.findUserByEmail(email);
-
-      if (user) {
-        logBackendEvent("user.create.reused", {
-          userId: user.id,
-          email: user.email,
-          source: "outlook",
-        });
-        const updates = {
-          ...(name ? { name } : {}),
-          ...(phone ? { phone } : {}),
-          authProvider: "outlook",
-        };
-        if (role === "courier") {
-          updates.role = "courier";
-          updates.courierMode = true;
-          if (ualbanyIdImage) {
-            updates.ualbanyIdImage = ualbanyIdImage;
-            updates.ualbanyIdUploaded = true;
-          }
-        }
-        await dataRepository.updateUserById(user.id, updates);
-        user = { ...user, ...updates };
-      } else {
-        if (role === "courier" && !ualbanyIdImage) {
-          sendJson(request, response, 400, { error: "Courier accounts need a UAlbany ID photo." });
-          return;
-        }
-
-        user = {
-          id: `user-${crypto.randomUUID()}`,
-          name,
-          email,
-          phone,
-          password: "",
-          authProvider: "outlook",
-          role,
-          courierMode: role === "courier",
-          ualbanyIdUploaded: Boolean(ualbanyIdImage),
-          ualbanyIdImage,
-          foodSafetyVerified: false,
-          notificationsEnabled: false,
-          courierOnline: false,
-          bio: "New UAlbany Outlook account.",
-          rating: 5,
-          completedJobs: 0,
-          earnings: 0,
-        };
-        const userCreationError = getUserCreationGuardError(user);
-        if (userCreationError) {
-          logBackendEvent("user.create.rejected", {
-            reason: userCreationError,
-            source: "outlook",
-            email: user.email,
-            userId: user.id,
-          });
-          sendJson(request, response, 400, { error: userCreationError });
-          return;
-        }
-
-        try {
-          await dataRepository.insertUser(user);
-        } catch (error) {
-          const duplicateMessage = getDuplicateKeyErrorMessage(error);
-          if (duplicateMessage) {
-            logBackendEvent("user.create.rejected", {
-              reason: "duplicate_key",
-              source: "outlook",
-              email: user.email,
-              userId: user.id,
-            });
-            sendJson(request, response, 409, { error: duplicateMessage });
-            return;
-          }
-          throw error;
-        }
-        logBackendEvent("user.created", {
-          userId: user.id,
-          email: user.email,
-          role: user.role,
-          source: "outlook",
-        });
-      }
-
-      const session = await replaceUserSessionAtomic(user.id);
-      sendJson(request, response, 200, { token: session.token, user: sanitizeUser(user) });
-      logBackendEvent("user.login", {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        method: "outlook",
-      });
-      return;
-    }
-
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       const body = await readBody(request, getBodyLimitForRequest(request, url));
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
       const user = await dataRepository.findUserByEmail(email);
 
-      if (user?.authProvider === "outlook") {
-        sendJson(request, response, 400, { error: "This account uses Outlook. Use the Outlook button to continue." });
-        return;
-      }
       if (!user || !verifyPassword(password, user.password)) {
         sendJson(request, response, 401, { error: "Invalid email or password." });
         return;
       }
 
+      const verificationDelivery = user.emailVerified
+        ? { delivered: true, previewCode: "" }
+        : await issueEmailVerificationCode(user);
       const session = await replaceUserSessionAtomic(user.id);
-      sendJson(request, response, 200, { token: session.token, user: sanitizeUser(user) });
+      sendJson(request, response, 200, {
+        token: session.token,
+        user: sanitizeUser(user),
+        verification: user.emailVerified
+          ? { required: false, delivered: true, previewCode: "" }
+          : {
+              required: true,
+              delivered: verificationDelivery.delivered,
+              previewCode: verificationDelivery.previewCode,
+            },
+      });
       logBackendEvent("user.login", {
         userId: user.id,
         email: user.email,
         role: user.role,
         method: "password",
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/verify-email") {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+
+      const body = await readBody(request);
+      const code = String(body.code || "").trim();
+
+      if (!code || auth.user.pendingEmailVerificationCode !== code || isEmailVerificationExpired(auth.user)) {
+        sendJson(request, response, 400, { error: "That email verification code is not correct or has expired." });
+        return;
+      }
+
+      auth.user.emailVerified = true;
+      delete auth.user.pendingEmailVerificationCode;
+      delete auth.user.pendingEmailVerificationIssuedAt;
+      await dataRepository.updateUserById(auth.user.id, {
+        emailVerified: true,
+        pendingEmailVerificationCode: "",
+        pendingEmailVerificationIssuedAt: "",
+      });
+
+      sendJson(request, response, 200, { user: sanitizeUser(auth.user) });
+      logBackendEvent("user.email_verified", {
+        userId: auth.user.id,
+        email: auth.user.email,
       });
       return;
     }

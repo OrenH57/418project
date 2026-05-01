@@ -127,10 +127,3 @@ export function getStripePublishableKey() {
   return process.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
 }
 
-export function getAzureClientId() {
-  return process.env.AZURE_CLIENT_ID || process.env.VITE_AZURE_CLIENT_ID || "";
-}
-
-export function getAzureTenantId() {
-  return process.env.AZURE_TENANT_ID || process.env.VITE_AZURE_TENANT_ID || "";
-}

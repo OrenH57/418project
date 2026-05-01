@@ -128,6 +128,10 @@ export function normalizeDataSnapshot(data) {
       user.foodSafetyVerified = user.role === "courier";
       changed = true;
     }
+    if (typeof user.emailVerified !== "boolean") {
+      user.emailVerified = true;
+      changed = true;
+    }
     if (typeof user.phone !== "string") {
       user.phone = "518-555-0100";
       changed = true;
