@@ -187,8 +187,8 @@ export function AuthPage() {
   function handleCancelVerification() {
     setVerificationCode("");
     setVerificationPreviewCode("");
-    navigate("/", { replace: true });
     logout();
+    window.location.replace("/");
   }
 
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
