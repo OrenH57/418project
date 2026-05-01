@@ -187,8 +187,8 @@ export function AuthPage() {
   function handleCancelVerification() {
     setVerificationCode("");
     setVerificationPreviewCode("");
-    logout();
     navigate("/", { replace: true });
+    logout();
   }
 
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
@@ -200,6 +200,9 @@ export function AuthPage() {
           {hasPendingEmailVerification ? (
             <>
               <CardHeader className="p-5 sm:p-6">
+                <Button className="mb-3 w-fit" onClick={handleCancelVerification} type="button" variant="link">
+                  Back
+                </Button>
                 <CardTitle>Verify your campus email</CardTitle>
                 <CardDescription>
                   Enter the 6-digit code for {user?.email || email.trim().toLowerCase() || "your .edu email"}.
