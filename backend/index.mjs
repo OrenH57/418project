@@ -305,10 +305,12 @@ async function issueEmailVerificationCode(user) {
   const issuedAt = new Date().toISOString();
 
   await dataRepository.updateUserById(user.id, {
+    emailVerified: false,
     pendingEmailVerificationCode: code,
     pendingEmailVerificationIssuedAt: issuedAt,
   });
 
+  user.emailVerified = false;
   user.pendingEmailVerificationCode = code;
   user.pendingEmailVerificationIssuedAt = issuedAt;
 
@@ -691,6 +693,35 @@ const server = http.createServer(async (request, response) => {
       logBackendEvent("user.email_verified", {
         userId: auth.user.id,
         email: auth.user.email,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/resend-verification") {
+      const auth = await requireUser(request, response);
+      if (!auth) return;
+
+      if (auth.user.emailVerified) {
+        sendJson(request, response, 200, {
+          ok: true,
+          verification: { required: false, delivered: true, previewCode: "" },
+        });
+        return;
+      }
+
+      const verificationDelivery = await issueEmailVerificationCode(auth.user);
+      sendJson(request, response, 200, {
+        ok: true,
+        verification: {
+          required: true,
+          delivered: verificationDelivery.delivered,
+          previewCode: verificationDelivery.previewCode,
+        },
+      });
+      logBackendEvent("user.email_verification_resent", {
+        userId: auth.user.id,
+        email: auth.user.email,
+        delivered: verificationDelivery.delivered,
       });
       return;
     }

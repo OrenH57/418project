@@ -274,6 +274,14 @@ export const api = {
       body: JSON.stringify({ code }),
     }, token);
   },
+  resendEmailVerification(token: string) {
+    return request<{
+      ok: true;
+      verification: { required: boolean; delivered: boolean; previewCode: string };
+    }>("/auth/resend-verification", {
+      method: "POST",
+    }, token);
+  },
   logout(token: string) {
     return request<{ ok: true }>("/auth/logout", {
       method: "POST",

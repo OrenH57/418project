@@ -45,7 +45,7 @@ function getSafeNextPath(value: string | null) {
 export function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, login, signup, verifyEmail } = useAuth();
+  const { user, login, signup, verifyEmail, resendEmailVerification, logout } = useAuth();
   const sideParam = searchParams.get("side");
   const safeNextPath = getSafeNextPath(searchParams.get("next"));
   const initialEntryView = sideParam === "courier" || safeNextPath.startsWith("/driver-feed") ? "courier" : "requester";
@@ -163,6 +163,33 @@ export function AuthPage() {
     }
   }
 
+  async function handleResendVerification() {
+    if (authSubmitLockRef.current) return;
+    authSubmitLockRef.current = true;
+    setBusy(true);
+
+    try {
+      const verification = await resendEmailVerification();
+      setVerificationPreviewCode(verification.previewCode || "");
+      toast.success(
+        verification.delivered
+          ? "A new verification code was sent to your campus email."
+          : "A new demo verification code was generated.",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not resend the verification code.");
+    } finally {
+      authSubmitLockRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  function handleCancelVerification() {
+    setVerificationCode("");
+    setVerificationPreviewCode("");
+    logout();
+  }
+
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
 
   return (
@@ -198,6 +225,14 @@ export function AuthPage() {
                   <Button className="w-full" disabled={busy || !verificationCode.trim()} size="lg" type="submit">
                     {busy ? "Please wait..." : "Verify Email"}
                   </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button disabled={busy} onClick={() => void handleResendVerification()} type="button" variant="secondary">
+                      Resend Code
+                    </Button>
+                    <Button disabled={busy} onClick={handleCancelVerification} type="button" variant="secondary">
+                      Sign Out
+                    </Button>
+                  </div>
                 </form>
               </CardContent>
             </>

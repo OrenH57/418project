@@ -40,6 +40,7 @@ type AuthContextValue = {
     ualbanyIdImage?: string;
   }) => Promise<{ user: User; verification?: AuthVerification }>;
   verifyEmail: (code: string) => Promise<User>;
+  resendEmailVerification: () => Promise<AuthVerification>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateLocalUser: (user: User) => void;
@@ -197,6 +198,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.user);
         localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         return response.user;
+      },
+      async resendEmailVerification() {
+        if (!tokenRef.current) {
+          throw new Error("Sign in again before requesting a new code.");
+        }
+        const response = await api.resendEmailVerification(tokenRef.current);
+        return response.verification;
       },
       logout() {
         const currentToken = token;
