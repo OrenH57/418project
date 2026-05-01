@@ -188,6 +188,7 @@ export function AuthPage() {
     setVerificationCode("");
     setVerificationPreviewCode("");
     logout();
+    navigate("/", { replace: true });
   }
 
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
