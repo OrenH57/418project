@@ -435,7 +435,7 @@ async function readRawBody(request, limitBytes = 256 * 1024) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-const server = http.createServer(async (request, response) => {
+export async function handleApiRequest(request, response) {
   try {
     if (!request.url) {
       sendJson(request, response, 404, { error: "Missing URL." });
@@ -802,14 +802,19 @@ const server = http.createServer(async (request, response) => {
       error: "Unexpected server error. Please try again.",
     });
   }
-});
+}
 
 await ensureSeedData();
 await readData();
 
-const port = Number(process.env.PORT || 4174);
-const host = process.env.HOST || "0.0.0.0";
+export default handleApiRequest;
 
-server.listen(port, host, () => {
-  console.log(`CampusConnect API running at http://${host}:${port} (${storageLabel} storage)`);
-});
+if (process.env.VERCEL !== "1") {
+  const server = http.createServer(handleApiRequest);
+  const port = Number(process.env.PORT || 4174);
+  const host = process.env.HOST || "0.0.0.0";
+
+  server.listen(port, host, () => {
+    console.log(`CampusConnect API running at http://${host}:${port} (${storageLabel} storage)`);
+  });
+}

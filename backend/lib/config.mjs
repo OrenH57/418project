@@ -2,6 +2,7 @@
 // Shared backend config, env loading, and app constants.
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,7 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const serverDir = path.resolve(__dirname, "..");
-export const dataDir = process.env.CAMPUSCONNECT_DATA_DIR || path.join(serverDir, "data");
+const fallbackDataDir = process.env.VERCEL === "1" ? path.join(os.tmpdir(), "campusconnect-data") : path.join(serverDir, "data");
+export const dataDir = process.env.CAMPUSCONNECT_DATA_DIR || fallbackDataDir;
 export const dataFile = process.env.CAMPUSCONNECT_DATA_FILE || path.join(dataDir, "app-data.json");
 export const rootDir = path.resolve(serverDir, "..");
 
