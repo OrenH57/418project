@@ -75,6 +75,7 @@ export function Messaging() {
   const [isCancellingRequest, setIsCancellingRequest] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
   const hasProcessedPaymentRedirect = useRef(false);
+  const autoSyncedPaymentRequestRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const checkoutLockRef = useRef(false);
   const paymentSyncLockRef = useRef(false);
@@ -189,8 +190,8 @@ export function Messaging() {
         hasProcessedPaymentRedirect.current = false;
         toast.error(
           error instanceof Error
-            ? `${error.message} Use Sync payment to check again.`
-            : "Could not sync the Stripe payment result. Use Sync payment to check again.",
+            ? `${error.message} Reopen this chat in a moment to check Stripe again.`
+            : "Could not check the Stripe payment result. Reopen this chat in a moment to try again.",
         );
       } finally {
         if (!shouldClearPaymentParams) return;
@@ -220,19 +221,38 @@ export function Messaging() {
     }
   }
 
-  async function handleSyncPayment() {
+  async function handleSyncPayment({ silent = false, attempts = 1 } = {}) {
     if (!token || !requestId) return;
     if (paymentSyncLockRef.current) return;
     paymentSyncLockRef.current = true;
 
     try {
       setIsSyncingPayment(true);
-      const response = await api.confirmCheckout(token, requestId, "success");
+      let response: Awaited<ReturnType<typeof api.confirmCheckout>> | null = null;
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          response = await api.confirmCheckout(token, requestId, "success");
+          lastError = undefined;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (attempt < attempts - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 900));
+          }
+        }
+      }
+
+      if (!response) throw lastError;
+
       setRequestRecord(response.request);
-      await loadMessages();
-      toast.success("Stripe payment synced.");
+      await loadMessages({ silent: true });
+      if (!silent) toast.success("Stripe payment synced.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Stripe has not marked this checkout paid yet.");
+      if (!silent) {
+        toast.error(error instanceof Error ? error.message : "Stripe has not marked this checkout paid yet.");
+      }
     } finally {
       paymentSyncLockRef.current = false;
       setIsSyncingPayment(false);
@@ -394,6 +414,14 @@ export function Messaging() {
       : paymentStatus === "pending"
         ? "border-amber-200 bg-amber-50 text-amber-900"
         : "border-rose-200 bg-rose-50 text-rose-900";
+
+  useEffect(() => {
+    if (!isRequester || !requestId || paymentStatus !== "pending") return;
+    if (autoSyncedPaymentRequestRef.current === requestId) return;
+
+    autoSyncedPaymentRequestRef.current = requestId;
+    void handleSyncPayment({ silent: true, attempts: 3 });
+  }, [isRequester, paymentStatus, requestId]);
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -681,18 +709,6 @@ export function Messaging() {
                           ? "Opening Stripe..."
                           : "Pay Delivery Fee"}
                   </Button>
-                  {paymentStatus === "pending" ? (
-                    <Button
-                      className="w-full"
-                      disabled={isSyncingPayment}
-                      onClick={() => void handleSyncPayment()}
-                      type="button"
-                      variant="outline"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingPayment ? "animate-spin" : ""}`} />
-                      {isSyncingPayment ? "Checking Stripe..." : "Sync Payment"}
-                    </Button>
-                  ) : null}
                 </CardContent>
               </Card>
             ) : null}
