@@ -62,7 +62,7 @@ function createRequestFingerprint(value: unknown) {
 function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButtonProps) {
   return (
     <button
-      className={`rounded-2xl border p-4 text-left transition ${
+      className={`rounded-xl border p-4 text-left transition ${
         active ? "border-[var(--brand-accent)] bg-[var(--surface-tint)]" : "border-[var(--border)] bg-white"
       }`}
       onClick={onClick}
@@ -71,7 +71,7 @@ function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButton
       <p className="font-semibold text-[var(--ink)]">{label}</p>
       <p className="mt-1 text-sm text-[var(--muted)]">Suggested: {suggestedPrice}</p>
       {label === "Food Delivery" ? (
-        <p className="mt-2 text-xs text-[var(--muted)]">Best when you already ordered in GET and only need delivery.</p>
+        <p className="mt-2 text-xs text-[var(--muted)]">For GET orders that need campus handoff.</p>
       ) : null}
     </button>
   );
@@ -79,7 +79,7 @@ function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButton
 
 function SectionCard({ title, description, children }: SectionCardProps) {
   return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-white p-4">
+    <div className="space-y-4 rounded-xl border border-[var(--border)] bg-white p-4">
       <div>
         <p className="font-medium text-[var(--ink)]">{title}</p>
         {description ? <p className="mt-1 text-sm text-[var(--muted)]">{description}</p> : null}
@@ -441,7 +441,7 @@ export function RequestService() {
         <Card>
           <CardHeader>
             <CardTitle>{helperCopy.title}</CardTitle>
-            <CardDescription>Fill out a short request so another student can help with delivery or a ride.</CardDescription>
+            <CardDescription>Post the pickup, drop-off, and payment details for a campus courier.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -452,8 +452,7 @@ export function RequestService() {
               ) : null}
 
               <SectionCard
-                description="Start by picking what you need."
-                title="1. What do you need?"
+                title="1. Request type"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
                   {serviceTypes.map((type) => (
@@ -470,17 +469,14 @@ export function RequestService() {
 
               {isFood ? (
                 <SectionCard
-                  description="CampusConnect handles the delivery request. Your actual food order still happens in GET first."
+                  description="Place the food order in GET, then add the delivery details here."
                   title="2. Order details"
                 >
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
-                    <p className="font-medium text-[var(--ink)]">Food delivery flow</p>
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] p-4">
+                    <p className="font-medium text-[var(--ink)]">GET order status</p>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      1. Order food in GET. 2. Save the confirmation screenshot. 3. Come back here to request delivery. 4. Pay and track updates in CampusConnect.
+                      Couriers use your confirmation details to pick up the right order.
                     </p>
-                    <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs text-[var(--muted)]">
-                      CampusConnect does not place the food order for you. It shares pickup and drop-off details with another student courier.
-                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         disabled={isBootstrapping}
@@ -497,19 +493,16 @@ export function RequestService() {
                         I Already Ordered In GET
                       </Button>
                     </div>
-                    <p className="mt-2 text-xs text-[var(--muted)]">
-                      GET opens in a new tab so this page stays here. The screenshot is the fastest way to show the courier exactly what to pick up.
-                    </p>
                   </div>
 
                   {hasOrderedInGet ? (
                     <>
                       <div className="space-y-3">
                         <Label htmlFor="order-screenshot">GET screenshot</Label>
-                        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
+                        <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
                           <label className="flex cursor-pointer items-center gap-3 text-sm text-[var(--ink)]" htmlFor="order-screenshot">
                             <ImagePlus className="h-4 w-4 text-[var(--brand-accent)]" />
-                            <span>Upload a screenshot of your GET confirmation. This is the easiest option.</span>
+                            <span>Upload the GET confirmation screenshot.</span>
                           </label>
                           <Input
                             accept="image/*"
@@ -522,7 +515,7 @@ export function RequestService() {
                         {orderScreenshot ? (
                           <img
                             alt="GET Mobile order screenshot preview"
-                            className="max-h-64 rounded-2xl border border-[var(--border)] object-cover"
+                            className="max-h-64 rounded-xl border border-[var(--border)] object-cover"
                             src={orderScreenshot}
                           />
                         ) : null}
@@ -586,7 +579,7 @@ export function RequestService() {
                   ) : null}
                 </SectionCard>
               ) : (
-                <SectionCard description="Keep this simple and short." title="2. Main details">
+                <SectionCard title="2. Main details">
                   <div>
                     <Label htmlFor="pickup">{helperCopy.pickupLabel}</Label>
                     <Input
@@ -596,9 +589,7 @@ export function RequestService() {
                       value={pickup}
                     />
                     {isRide ? (
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        Use this for the exact off-campus pickup spot if you are heading into campus.
-                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">Exact pickup spot for campus-bound rides.</p>
                     ) : null}
                   </div>
                 </SectionCard>
@@ -608,15 +599,8 @@ export function RequestService() {
                 <div className="space-y-4">
                   {isHousingDelivery ? (
                     <SectionCard
-                      description="Pick your area first, then choose the building and meet spot."
-                      title="3. Where should it go?"
+                      title="3. Drop-off"
                     >
-                      <div>
-                        <p className="text-sm text-[var(--muted)]">
-                          Residence halls usually need ID access, so handoff spots stay outside.
-                        </p>
-                      </div>
-
                       <div className="grid gap-4 md:grid-cols-2">
                         <div>
                           <Label htmlFor="housing-area">Residential Area *</Label>
@@ -705,7 +689,7 @@ export function RequestService() {
                           </SelectContent>
                         </Select>
                         <p className="mt-1 text-xs text-[var(--muted)]">
-                          Meet outside since most residence halls need ID access. If you only know the quad or area, that is enough.
+                          Public handoff spots are recommended for residence halls.
                         </p>
                       </div>
 
@@ -715,7 +699,7 @@ export function RequestService() {
                       </div>
                     </SectionCard>
                   ) : (
-                    <SectionCard description="Type the place where you want to meet." title="3. Where should it go?">
+                    <SectionCard title="3. Destination">
                       {isRide ? (
                         <div className="mb-4 grid gap-4 md:grid-cols-2">
                           <div>
@@ -767,7 +751,7 @@ export function RequestService() {
                       />
                       {isRide ? (
                         <p className="mt-1 text-xs text-[var(--muted)]">
-                          Use this for off-campus pickups heading back to campus.
+                          Off-campus pickup heading back to campus.
                         </p>
                       ) : null}
                     </SectionCard>
@@ -776,7 +760,7 @@ export function RequestService() {
                 </div>
               ) : null}
 
-              <SectionCard description={isFood ? "Set the time and review the delivery charge." : "Set the time and optional tip."} title="4. Finish request">
+              <SectionCard title="4. Payment and timing">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>When do you need it?</Label>
@@ -808,7 +792,7 @@ export function RequestService() {
                       />
                     ) : (
                       <p className="mt-3 text-sm text-[var(--muted)]">
-                        Standard is now. Only pick a date and time if you want to schedule it.
+                        Use schedule only for a later pickup.
                       </p>
                     )}
                   </div>
@@ -816,7 +800,7 @@ export function RequestService() {
                   {isFood ? (
                     <div>
                       <Label>Delivery fee</Label>
-                      <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
+                      <div className="mt-2 rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-sm text-[var(--muted)]">
@@ -828,21 +812,19 @@ export function RequestService() {
                           </p>
                         </div>
                       </div>
-                      <p className="mt-1 text-sm text-[var(--muted)]">
-                        This is the location-based delivery charge before any optional tip.
-                      </p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">Location-based delivery charge before tip.</p>
                     </div>
                   ) : (
                     <div>
                       <Label>Ride offer</Label>
-                      <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
+                      <div className="mt-2 rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-sm text-[var(--muted)]">Base ride offer</p>
                           <p className="text-2xl font-semibold text-[var(--ink)]">${formatDeliveryFee(MIN_PAYMENT_OFFER)}</p>
                         </div>
                       </div>
                       <p className="mt-1 text-sm text-[var(--muted)]">
-                        This is the only base price for the job. Add a tip below if you want.
+                        Base ride offer before tip.
                       </p>
                     </div>
                   )}
@@ -867,7 +849,7 @@ export function RequestService() {
                     </div>
                     <p className="mt-1 text-sm text-[var(--muted)]">Tips are optional and can include cents.</p>
                   </div>
-                  <div className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm">
+                  <div className="rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-sm">
                     <p className="text-[var(--muted)]">Total payment</p>
                     <p className="mt-1 text-xl font-semibold text-[var(--brand-accent)]">
                       {isFood && selectedDeliveryFee === null ? "--" : `$${currentPaymentTotal}`}

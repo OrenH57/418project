@@ -314,7 +314,7 @@ export function AuthPage() {
                     />
                   </div>
                   <p className="mt-1 text-xs text-[var(--muted)]">
-                    Couriers can use this if they need to reach you during pickup or drop-off.
+                    Used for pickup and drop-off coordination.
                   </p>
                 </div>
                 {showCourierIdUpload ? (
@@ -333,9 +333,7 @@ export function AuthPage() {
                         type="file"
                       />
                     </div>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      Courier access requires a campus ID photo for account review.
-                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">Required for courier access.</p>
                     {ualbanyIdImage ? (
                       <img
                         alt="UAlbany ID preview"
@@ -384,7 +382,7 @@ export function AuthPage() {
             <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
               <p className="font-medium text-[var(--ink)]">Explore the app</p>
               <p className="mt-1 text-xs text-[var(--muted)]">
-                Open a seeded workspace with one click.
+                Open a seeded role workspace.
               </p>
               <div className="mt-3 grid gap-2">
                 {demoAccounts.map((account) => {

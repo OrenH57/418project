@@ -310,7 +310,7 @@ export function Profile() {
                 <CardHeader>
                   <CardTitle>Set up your courier side</CardTitle>
                   <CardDescription>
-                    Switch into the courier side anytime, go online for jobs, and verify your campus email before accepting food deliveries.
+                    Complete the checks required to accept food delivery jobs.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-3">
@@ -319,27 +319,21 @@ export function Profile() {
                       <CheckCircle2 className={`h-4 w-4 ${courierReadyNow ? "text-green-700" : "text-[var(--muted)]"}`} />
                       <p className="font-medium text-[var(--ink)]">1. Upload your ID</p>
                     </div>
-                    <p className="mt-2 text-sm text-[var(--muted)]">
-                      This lets us know you are a real UAlbany student before you take courier jobs.
-                    </p>
+                    <p className="mt-2 text-sm text-[var(--muted)]">Confirm UAlbany student status.</p>
                   </div>
                   <div className="rounded-xl border border-[var(--border)] bg-white p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className={`h-4 w-4 ${foodReady ? "text-green-700" : "text-[var(--muted)]"}`} />
                       <p className="font-medium text-[var(--ink)]">2. Verify food delivery</p>
                     </div>
-                    <p className="mt-2 text-sm text-[var(--muted)]">
-                      Food jobs need your campus email code first so couriers are safer and easier to trust.
-                    </p>
+                    <p className="mt-2 text-sm text-[var(--muted)]">Required before accepting food orders.</p>
                   </div>
                   <div className="rounded-xl border border-[var(--border)] bg-white p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className={`h-4 w-4 ${Boolean(profile?.courierOnline) ? "text-green-700" : "text-[var(--muted)]"}`} />
                       <p className="font-medium text-[var(--ink)]">3. Go online</p>
                     </div>
-                    <p className="mt-2 text-sm text-[var(--muted)]">
-                      Stay online while you are in the dorms, library, or around campus and let the app nudge you when a nearby order comes in.
-                    </p>
+                    <p className="mt-2 text-sm text-[var(--muted)]">Receive open campus jobs while available.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -379,20 +373,11 @@ export function Profile() {
                 <div className="flex items-center justify-between rounded-xl border border-[var(--border)] p-4">
                   <div>
                     <p className="font-medium text-[var(--ink)]">Current side</p>
-                    <p className="text-sm text-[var(--muted)]">
-                      This session stays on one side to keep the app simple.
-                    </p>
+                    <p className="text-sm text-[var(--muted)]">Active role for this session.</p>
                   </div>
                   <Badge variant="secondary">
                     {preferredView === "courier" ? "Courier side" : "User side"}
                   </Badge>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border)] p-4">
-                  <p className="font-medium text-[var(--ink)]">Changing sides</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">
-                    If you want the other side of the app, sign out and sign back in there instead of switching in place.
-                  </p>
                 </div>
 
                 <div className="rounded-xl border border-[var(--border)] p-4">
@@ -401,15 +386,15 @@ export function Profile() {
                       <p className="font-medium text-[var(--ink)]">Courier ID check</p>
                       <p className="text-sm text-[var(--muted)]">
                         {courierReadyNow
-                          ? "Your UAlbany ID is already on file, including IDs added during sign-up."
-                          : "Upload a photo of your UAlbany ID before using the courier side."}
+                          ? "UAlbany ID is on file."
+                          : "Upload a UAlbany ID photo before taking courier jobs."}
                       </p>
                     </div>
                     <Badge variant="secondary">
                       {courierReadyNow ? "ID uploaded" : "ID needed"}
                     </Badge>
                   </div>
-                  <div className="mt-4 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
+                  <div className="mt-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-tint)] p-4">
                     <label className="flex cursor-pointer items-center gap-3 text-sm text-[var(--ink)]" htmlFor="profile-ualbany-id">
                       <ImagePlus className="h-4 w-4 text-[var(--brand-accent)]" />
                       <span>{courierReadyNow ? "Replace your UAlbany ID photo if needed." : "Upload your UAlbany ID photo."}</span>
@@ -422,15 +407,10 @@ export function Profile() {
                       type="file"
                     />
                   </div>
-                  {!courierReadyNow ? (
-                    <p className="mt-3 text-sm text-[var(--muted)]">
-                      Once your ID is uploaded, you can open the courier side and wait online for new orders.
-                    </p>
-                  ) : null}
                   {ualbanyIdImage ? (
                     <img
                       alt="Saved UAlbany ID preview"
-                      className="mt-3 max-h-44 rounded-2xl border border-[var(--border)] object-cover"
+                      className="mt-3 max-h-44 rounded-xl border border-[var(--border)] object-cover"
                       src={ualbanyIdImage}
                     />
                   ) : null}
@@ -440,9 +420,7 @@ export function Profile() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-[var(--ink)]">Food safety verification</p>
-                      <p className="text-sm text-[var(--muted)]">
-                        Verify your campus email with a code before accepting food deliveries.
-                      </p>
+                      <p className="text-sm text-[var(--muted)]">Email code required for food delivery access.</p>
                     </div>
                     <Badge variant="secondary">
                       {profile?.foodSafetyVerified ? "Verified" : "Verification needed"}
@@ -468,9 +446,7 @@ export function Profile() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-[var(--ink)]">Notifications</p>
-                      <p className="text-sm text-[var(--muted)]">
-                        Turn this on if you want message updates, courier activity, and campus order alerts.
-                      </p>
+                      <p className="text-sm text-[var(--muted)]">Message updates and new-job alerts.</p>
                     </div>
                     <Badge variant="secondary">
                       {profile?.notificationsEnabled ? "On" : "Off"}
@@ -479,7 +455,7 @@ export function Profile() {
                   <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="text-sm text-[var(--muted)]">
                       {browserSupported
-                        ? "This uses your browser notifications, so you can leave the page open and still get a heads-up."
+                        ? "Uses browser notifications."
                         : "This browser does not support notifications yet."}
                     </div>
                     <Button
@@ -499,7 +475,7 @@ export function Profile() {
                     <div>
                       <p className="font-medium text-[var(--ink)]">Courier online mode</p>
                       <p className="text-sm text-[var(--muted)]">
-                        If you want to make extra cash, go online and wait for campus jobs to come in.
+                        Make yourself available for open campus jobs.
                       </p>
                     </div>
                     <Badge variant="secondary">
@@ -509,8 +485,8 @@ export function Profile() {
                   <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="text-sm text-[var(--muted)]">
                       {courierReadyNow
-                        ? "You can stay online even if you are just hanging out on campus. New open jobs will show up in the courier side."
-                        : "Upload your UAlbany ID first. Then you can turn this on and wait for new orders."}
+                        ? "New jobs appear in the courier feed."
+                        : "Upload your UAlbany ID before going online."}
                     </div>
                     <Button
                       disabled={!courierReadyNow}

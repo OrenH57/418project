@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 const helpCards = [
   {
     title: "How to order food",
-    body: "Order in GET first, then request delivery here and use chat to coordinate pickup, payment, and handoff.",
+    body: "Order in GET, request delivery, and coordinate the handoff in chat.",
     icon: UtensilsCrossed,
   },
   {
@@ -20,7 +20,7 @@ const helpCards = [
   },
   {
     title: "How safety works",
-    body: "Only .edu accounts can sign up, food couriers need verification, and handoffs should happen in public campus spots.",
+    body: ".edu sign-in, courier verification, and public campus handoffs keep requests accountable.",
     icon: Shield,
   },
 ];
@@ -45,8 +45,7 @@ export function HelpInfo() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-              CampusConnect is food-delivery first: requesters post Campus Center delivery jobs, couriers accept them,
-              and the message thread keeps pickup, payment, and drop-off details in one place.
+              CampusConnect keeps Campus Center pickup, payment, chat, and drop-off details in one workflow.
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
