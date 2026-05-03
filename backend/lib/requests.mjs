@@ -2,7 +2,7 @@
 // Request and message formatting helpers shared across backend routes.
 
 export const ACTIVE_REQUEST_STATUSES = ["open", "accepted"];
-export const ORDER_TIMEOUT_MS = 60 * 60 * 1000;
+export const ORDER_TIMEOUT_MS = 10 * 60 * 60 * 1000;
 
 export function isActiveRequestStatus(status) {
   return ACTIVE_REQUEST_STATUSES.includes(status);
@@ -21,7 +21,8 @@ export function getTimedOutRequestIds(data, now = new Date()) {
   const timedOutRequestIds = [];
 
   for (const request of data.requests || []) {
-    if (request.status !== "open") continue;
+    if (!isActiveRequestStatus(request.status)) continue;
+    if (request.deliveryConfirmedByCourier) continue;
 
     const createdAtMs = new Date(request.createdAt).getTime();
     if (!Number.isFinite(createdAtMs) || nowMs - createdAtMs < ORDER_TIMEOUT_MS) continue;
@@ -38,11 +39,13 @@ export function expireTimedOutRequests(data, now = new Date()) {
     return false;
   }
 
-  data.requests = (data.requests || []).filter((request) => !timedOutRequestIds.has(request.id));
-  data.messages = data.messages || {};
+  const expiredAt = now.toISOString();
 
-  for (const requestId of timedOutRequestIds) {
-    delete data.messages[requestId];
+  for (const request of data.requests || []) {
+    if (!timedOutRequestIds.has(request.id)) continue;
+    request.status = "expired";
+    request.expiredAt = expiredAt;
+    request.closedBy = "system";
   }
 
   return true;

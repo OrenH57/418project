@@ -20,8 +20,11 @@ export function createDataRepository(adapter, { log = () => {} } = {}) {
     const changed = normalized || expired;
 
     if (timedOutRequestIds.length && adapter.canWriteNormalizedSnapshots === false) {
-      await adapter.deleteRequestsByIds?.(timedOutRequestIds);
-      await adapter.deleteMessagesByRequestIds?.(timedOutRequestIds);
+      await adapter.expireRequestsByIds?.(timedOutRequestIds, {
+        status: "expired",
+        expiredAt: new Date().toISOString(),
+        closedBy: "system",
+      });
     }
 
     if (changed && adapter.canWriteNormalizedSnapshots !== false) {

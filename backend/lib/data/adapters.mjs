@@ -271,6 +271,12 @@ export function createMemoryDataAdapter(initialData = cloneSeedData()) {
       const ids = new Set(requestIds);
       state.requests = state.requests.filter((request) => !ids.has(request.id));
     },
+    async expireRequestsByIds(requestIds, updates) {
+      const ids = new Set(requestIds);
+      for (const request of state.requests) {
+        if (ids.has(request.id)) Object.assign(request, clone(updates));
+      }
+    },
     async insertMessages(requestId, messages) {
       state.messages[requestId] = clone(messages);
     },
@@ -392,6 +398,9 @@ export function createTempFileDataAdapter({ dataFile, seedData = cloneSeedData()
     },
     async deleteRequestsByIds(...args) {
       return await mutate("deleteRequestsByIds", ...args);
+    },
+    async expireRequestsByIds(...args) {
+      return await mutate("expireRequestsByIds", ...args);
     },
     async insertMessages(...args) {
       return await mutate("insertMessages", ...args);
@@ -717,6 +726,9 @@ export function createMongoDataAdapter(db, { ensureIndex }) {
     },
     async deleteRequestsByIds(requestIds) {
       await collections.requests.deleteMany({ id: { $in: requestIds } });
+    },
+    async expireRequestsByIds(requestIds, updates) {
+      await collections.requests.updateMany({ id: { $in: requestIds } }, { $set: updates });
     },
     async insertMessages(requestId, messages) {
       await collections.messages.insertOne({ requestId, messages });

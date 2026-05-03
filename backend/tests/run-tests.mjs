@@ -840,38 +840,59 @@ await runTest("campus snapshot excludes admin removed requests", async () => {
   assert.deepEqual(snapshot.myRecentRequests.map((request) => request.id), ["visible-request"]);
 });
 
-await runTest("expireTimedOutRequests deletes stale open orders only", async () => {
+await runTest("expireTimedOutRequests expires undelivered active orders after 10 hours", async () => {
   const now = new Date("2026-04-26T14:00:00.000Z");
   const data = {
     requests: [
       {
         id: "request-stale-open",
         status: "open",
-        createdAt: "2026-04-26T12:30:00.000Z",
+        createdAt: "2026-04-26T03:30:00.000Z",
+        deliveryConfirmedByCourier: false,
       },
       {
         id: "request-stale-accepted",
         status: "accepted",
-        createdAt: "2026-04-26T12:00:00.000Z",
+        createdAt: "2026-04-26T02:00:00.000Z",
+        deliveryConfirmedByCourier: false,
       },
       {
         id: "request-fresh-open",
         status: "open",
         createdAt: "2026-04-26T13:30:00.000Z",
+        deliveryConfirmedByCourier: false,
+      },
+      {
+        id: "request-delivered-accepted",
+        status: "accepted",
+        createdAt: "2026-04-26T02:30:00.000Z",
+        deliveryConfirmedByCourier: true,
       },
     ],
     messages: {
       "request-stale-open": [{ id: "message-old" }],
       "request-stale-accepted": [{ id: "message-accepted" }],
+      "request-delivered-accepted": [{ id: "message-delivered" }],
     },
   };
 
   assert.equal(expireTimedOutRequests(data, now), true);
-  assert.deepEqual(data.requests.map((request) => request.id), ["request-stale-accepted", "request-fresh-open"]);
-  assert.equal(data.messages["request-stale-open"], undefined);
+  assert.deepEqual(data.requests.map((request) => request.id), [
+    "request-stale-open",
+    "request-stale-accepted",
+    "request-fresh-open",
+    "request-delivered-accepted",
+  ]);
+  assert.equal(data.requests[0].status, "expired");
+  assert.equal(data.requests[0].expiredAt, now.toISOString());
+  assert.equal(data.requests[0].closedBy, "system");
+  assert.equal(data.requests[1].status, "expired");
+  assert.equal(data.requests[1].expiredAt, now.toISOString());
+  assert.equal(data.requests[2].status, "open");
+  assert.equal(data.requests[3].status, "accepted");
+  assert.equal(data.messages["request-stale-open"].length, 1);
   assert.equal(data.messages["request-stale-accepted"].length, 1);
-  assert.equal(data.requests[0].status, "accepted");
-  assert.equal(data.requests[1].status, "open");
+  assert.equal(data.messages["request-delivered-accepted"].length, 1);
   assert.equal(expireTimedOutRequests(data, now), false);
 });
 
