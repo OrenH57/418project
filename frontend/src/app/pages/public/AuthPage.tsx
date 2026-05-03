@@ -4,13 +4,12 @@
 
 import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { Phone, ImagePlus } from "lucide-react";
+import { Phone, ImagePlus, UserRound, ShieldCheck, Store } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
-import { Badge } from "../../components/ui/badge";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
 import { getDefaultPath, setStoredView } from "../../lib/viewMode";
@@ -29,9 +28,9 @@ const sideCopy = {
 };
 
 const demoAccounts = [
-  { role: "Requester", email: "ariana.green@albany.edu", password: "demo1234" },
-  { role: "Courier", email: "marcus.hall@albany.edu", password: "demo1234" },
-  { role: "Admin", email: "jordan.reyes@albany.edu", password: "demo1234" },
+  { role: "Requester", email: "ariana.green@albany.edu", password: "demo1234", icon: Store },
+  { role: "Courier", email: "marcus.hall@albany.edu", password: "demo1234", icon: UserRound },
+  { role: "Admin", email: "jordan.reyes@albany.edu", password: "demo1234", icon: ShieldCheck },
 ];
 
 function getSafeNextPath(value: string | null) {
@@ -191,6 +190,31 @@ export function AuthPage() {
     window.location.replace("/");
   }
 
+  async function handleDemoLogin(account: (typeof demoAccounts)[number]) {
+    if (authSubmitLockRef.current) return;
+    authSubmitLockRef.current = true;
+    setBusy(true);
+    setMode("login");
+    setEmail(account.email);
+
+    try {
+      const { user: nextUser, verification } = await login(account.email, account.password);
+      setStoredView(account.role === "Courier" ? "courier" : "requester");
+      if (verification?.required || !nextUser.emailVerified) {
+        setVerificationPreviewCode(verification?.previewCode || "");
+        toast.success("Enter the verification code sent to your campus email.");
+        return;
+      }
+      toast.success(`Opening ${account.role.toLowerCase()} workspace.`);
+      navigate(getPostAuthPath(nextUser), { replace: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open this workspace.");
+    } finally {
+      authSubmitLockRef.current = false;
+      setBusy(false);
+    }
+  }
+
   const showCourierIdUpload = mode === "signup" && entryView === "courier";
 
   return (
@@ -310,7 +334,7 @@ export function AuthPage() {
                       />
                     </div>
                     <p className="mt-1 text-xs text-[var(--muted)]">
-                      This stays small and simple for the prototype, but it is required for courier access.
+                      Courier access requires a campus ID photo for account review.
                     </p>
                     {ualbanyIdImage ? (
                       <img
@@ -357,21 +381,34 @@ export function AuthPage() {
               {busy ? "Please wait..." : mode === "login" ? "Log In" : "Create Account"}
             </Button>
 
-            <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
-              <p className="font-medium text-[var(--ink)]">Demo accounts</p>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
+              <p className="font-medium text-[var(--ink)]">Explore the app</p>
               <p className="mt-1 text-xs text-[var(--muted)]">
-                These are available in the seeded prototype database.
+                Open a seeded workspace with one click.
               </p>
-              <div className="mt-3 space-y-2">
-                {demoAccounts.map((account) => (
-                  <div key={account.email} className="rounded-xl bg-white px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{account.role}</Badge>
-                      <span className="font-medium text-[var(--ink)]">{account.email}</span>
-                    </div>
-                    <p className="mt-1 text-[var(--muted)]">Password: {account.password}</p>
-                  </div>
-                ))}
+              <div className="mt-3 grid gap-2">
+                {demoAccounts.map((account) => {
+                  const Icon = account.icon;
+
+                  return (
+                    <Button
+                      className="h-auto justify-start gap-3 rounded-lg bg-white px-3 py-3 text-left"
+                      disabled={busy}
+                      key={account.email}
+                      onClick={() => void handleDemoLogin(account)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-tint)] text-[var(--brand-maroon)]">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <span className="block font-medium text-[var(--ink)]">Continue as {account.role}</span>
+                        <span className="block text-xs font-normal text-[var(--muted)]">{account.email}</span>
+                      </div>
+                    </Button>
+                  );
+                })}
               </div>
             </div>
             </form>

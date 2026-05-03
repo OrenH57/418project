@@ -1,11 +1,11 @@
 // File purpose:
 // Student profile page for bio, courier mode, stats, and food-safety verification.
-// This is where courier verification is requested and confirmed in the prototype.
+// This is where courier verification is requested and confirmed.
 
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ChangeEvent } from "react";
-import { ArrowLeft, ShieldCheck, Star, Wallet, Bell, Bike, MailCheck, ImagePlus, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Star, Wallet, Bell, Footprints, MailCheck, ImagePlus, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
@@ -310,7 +310,7 @@ export function Profile() {
                 <CardHeader>
                   <CardTitle>Set up your courier side</CardTitle>
                   <CardDescription>
-                    Prototype mode: switch into the courier side anytime, go online for jobs, and only verify your campus email if you want to accept food deliveries.
+                    Switch into the courier side anytime, go online for jobs, and verify your campus email before accepting food deliveries.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-3">
@@ -517,7 +517,7 @@ export function Profile() {
                       onClick={() => void handleCourierOnlineToggle()}
                       type="button"
                     >
-                      <Bike className="mr-2 h-4 w-4" />
+                      <Footprints className="mr-2 h-4 w-4" />
                       {profile?.courierOnline ? "Go Offline" : "Go Online For Jobs"}
                     </Button>
                   </div>

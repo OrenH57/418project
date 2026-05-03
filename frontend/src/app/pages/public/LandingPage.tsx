@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { LandingHeroGraphic } from "../../components/marketing/LandingHeroGraphic";
+import { UAlbanyMark } from "../../components/brand/UAlbanyMark";
 import { openGetMobile } from "../../lib/getMobile";
 
 const featureCards = [
@@ -49,15 +50,26 @@ export function LandingPage() {
     <div className="landing-page min-h-screen bg-[var(--page-bg)] pb-28 sm:pb-0">
       <div className="ua-banner border-b border-[var(--border-strong)] text-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 text-xs tracking-[0.18em] uppercase">
-          <span>University at Albany Student Delivery Network</span>
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[var(--brand-gold)]" />
+            University at Albany Student Delivery Network
+          </span>
           <span className="hidden text-white/75 sm:inline">Campus Center Pickup Across Campus</span>
         </div>
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-5 sm:py-8">
-        <section className="landing-shell rounded-[2rem] p-5 sm:p-7 lg:p-8">
+        <section className="landing-shell rounded-xl p-5 sm:p-7 lg:p-8">
           <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
             <div>
+              <div className="mb-5 flex items-center gap-3">
+                <UAlbanyMark />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--brand-maroon)]">UAlbany CampusConnect</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Campus food delivery network</p>
+                </div>
+              </div>
+
               <Badge className="mb-3 gap-2 rounded-full px-4 py-2 text-xs" variant="secondary">
                 <Sparkles className="h-3.5 w-3.5" />
                 UAlbany-only food delivery
@@ -86,7 +98,7 @@ export function LandingPage() {
                 </span>
               </div>
 
-              <div className="mt-7 rounded-[1.75rem] border border-[var(--border)] bg-white/86 p-4 shadow-[0_22px_55px_rgba(45,34,39,0.09)] backdrop-blur sm:p-5">
+              <div className="mt-7 rounded-xl border border-[var(--border)] bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col gap-4">
                   <div className="max-w-xl">
                     <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Ready to eat?</p>
@@ -98,14 +110,14 @@ export function LandingPage() {
 
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
                     <Button
-                      className="landing-action-bubbles w-full rounded-2xl text-base shadow-[0_18px_30px_rgba(107,54,95,0.24)]"
+                      className="landing-action-bubbles w-full rounded-lg text-base"
                       onClick={() => navigate("/auth?side=requester")}
                       size="lg"
                     >
                       Request Delivery
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
-                    <Button className="landing-action-bubbles w-full rounded-2xl" onClick={() => openGetMobile()} size="lg" variant="outline">
+                    <Button className="landing-action-bubbles w-full rounded-lg" onClick={() => openGetMobile()} size="lg" variant="outline">
                       Open GET First
                     </Button>
                   </div>
@@ -123,13 +135,13 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <div className="mt-5 rounded-[1.5rem] bg-white/42 p-4 sm:p-5">
+              <div className="mt-5 rounded-xl border border-[var(--border)] bg-white p-4 sm:p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Want to earn?</p>
                     <p className="mt-1 text-sm leading-6 text-[var(--muted)]">Pick up nearby campus food runs when they fit your route.</p>
                   </div>
-                  <Button className="landing-action-bubbles rounded-2xl sm:min-w-44" onClick={() => navigate("/auth?side=courier")} size="lg" variant="secondary">
+                  <Button className="landing-action-bubbles rounded-lg sm:min-w-44" onClick={() => navigate("/auth?side=courier")} size="lg" variant="secondary">
                     Earn as Courier
                   </Button>
                 </div>
@@ -138,7 +150,7 @@ export function LandingPage() {
 
             <div className="space-y-4">
               <LandingHeroGraphic />
-              <Card className="overflow-hidden border-transparent bg-white/38 shadow-none">
+              <Card className="overflow-hidden bg-white shadow-sm">
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -147,15 +159,15 @@ export function LandingPage() {
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[1.25rem] bg-white/55 p-4">
+                    <div className="rounded-xl bg-[var(--surface-tint)] p-4">
                       <Shield className="h-5 w-5 text-[var(--brand-accent)]" />
                       <p className="mt-3 font-semibold text-[var(--ink)]">Campus-only delivery</p>
                       <p className="mt-1 text-sm text-[var(--muted)]">Requests and couriers are limited to UAlbany students.</p>
                     </div>
-                    <div className="rounded-[1.25rem] bg-white/55 p-4">
+                    <div className="rounded-xl bg-[var(--surface-tint)] p-4">
                       <CheckCircle2 className="h-5 w-5 text-[var(--brand-accent)]" />
                       <p className="mt-3 font-semibold text-[var(--ink)]">GET first, delivery here</p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">Keep the food order familiar, then add campus delivery.</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">Order in GET first, then track the campus handoff here.</p>
                     </div>
                   </div>
                 </CardContent>
@@ -164,17 +176,19 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="mt-5 hidden gap-3 lg:grid lg:grid-cols-3">
+        <section className="mt-5 hidden gap-4 lg:grid lg:grid-cols-3">
           {featureCards.map((card) => {
             const Icon = card.icon;
             return (
-              <Card key={card.title} className="border-transparent bg-white/45 shadow-none backdrop-blur">
-                <CardContent className="p-4">
-                  <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(107,54,95,0.12),rgba(199,162,74,0.16))] text-[var(--brand-accent)] sm:h-12 sm:w-12">
+              <Card key={card.title} className="bg-white shadow-sm">
+                <CardContent className="flex min-h-36 items-start gap-4 p-5 xl:p-6">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-tint)] text-[var(--brand-accent)]">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <p className="font-semibold text-[var(--ink)]">{card.title}</p>
-                  <p className="mt-1.5 text-sm leading-6 text-[var(--muted)]">{card.body}</p>
+                  <div className="pt-1">
+                    <p className="font-semibold text-[var(--ink)]">{card.title}</p>
+                    <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--muted)]">{card.body}</p>
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -182,15 +196,15 @@ export function LandingPage() {
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-white/95 p-3 shadow-[0_-12px_40px_rgba(45,34,39,0.12)] backdrop-blur sm:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-white/95 p-3 shadow-sm sm:hidden">
         <div className="mx-auto flex max-w-md items-center gap-2">
-          <Button className="landing-action-bubbles min-h-12 flex-1 rounded-2xl" onClick={() => navigate("/auth?side=requester")} size="lg">
+          <Button className="landing-action-bubbles min-h-12 flex-1 rounded-lg" onClick={() => navigate("/auth?side=requester")} size="lg">
             Order
           </Button>
-          <Button className="landing-action-bubbles min-h-12 rounded-2xl px-4" onClick={() => openGetMobile()} size="lg" variant="outline">
+          <Button className="landing-action-bubbles min-h-12 rounded-lg px-4" onClick={() => openGetMobile()} size="lg" variant="outline">
             GET
           </Button>
-          <Button className="landing-action-bubbles min-h-12 rounded-2xl px-4" onClick={() => navigate("/auth?side=courier")} size="lg" variant="secondary">
+          <Button className="landing-action-bubbles min-h-12 rounded-lg px-4" onClick={() => navigate("/auth?side=courier")} size="lg" variant="secondary">
             Earn
           </Button>
         </div>

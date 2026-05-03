@@ -1,5 +1,5 @@
 // File purpose:
-// Live admin moderation page for the prototype.
+// Live admin moderation page.
 // Lets campus admins review flagged requests, remove unsafe listings, and suspend repeat offenders.
 
 import { useEffect, useRef, useState } from "react";

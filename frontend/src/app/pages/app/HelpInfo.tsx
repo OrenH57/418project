@@ -2,7 +2,7 @@
 // Simple help and info page.
 // Explains the main campus app flows in plain language for students.
 
-import { ArrowLeft, Bike, CircleHelp, Shield, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, CircleHelp, Footprints, Shield, UtensilsCrossed } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -16,7 +16,7 @@ const helpCards = [
   {
     title: "How to be a courier",
     body: "Open the courier side, verify food delivery, accept a job, and use quick chat updates during the handoff.",
-    icon: Bike,
+    icon: Footprints,
   },
   {
     title: "How safety works",
@@ -44,7 +44,7 @@ export function HelpInfo() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-2xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
+            <div className="rounded-xl bg-[var(--surface-tint)] p-4 text-sm text-[var(--muted)]">
               CampusConnect is food-delivery first: requesters post Campus Center delivery jobs, couriers accept them,
               and the message thread keeps pickup, payment, and drop-off details in one place.
             </div>
@@ -53,8 +53,8 @@ export function HelpInfo() {
               {helpCards.map((card) => {
                 const Icon = card.icon;
                 return (
-                  <div key={card.title} className="rounded-2xl border border-[var(--border)] bg-white p-4">
-                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--surface-tint)] text-[var(--brand-accent)]">
+                  <div key={card.title} className="rounded-xl border border-[var(--border)] bg-white p-4">
+                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--surface-tint)] text-[var(--brand-accent)]">
                       <Icon className="h-5 w-5" />
                     </div>
                     <p className="font-semibold text-[var(--ink)]">{card.title}</p>

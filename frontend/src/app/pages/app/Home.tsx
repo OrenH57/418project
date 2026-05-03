@@ -52,7 +52,7 @@ const quickActions: QuickAction[] = [
   {
     label: "Need a Ride?",
     description: "Rides are still available when you need a quick trip across campus.",
-    detail: "Secondary",
+    detail: "Campus route",
     path: "/request?type=ride",
     icon: Car,
     accentClassName: "bg-[var(--gold-soft)] text-[var(--brand-maroon)]",
@@ -102,13 +102,13 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
 
   return (
     <button
-      className="rounded-[1.75rem] border-2 border-[var(--border)] bg-[var(--surface)] p-0 text-left shadow-[0_8px_20px_rgba(45,34,39,0.05)] transition-all hover:-translate-y-1 hover:border-[var(--brand-accent)] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-gold)] focus-visible:ring-offset-2"
+      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--brand-accent)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-gold)] focus-visible:ring-offset-2"
       onClick={() => onOpen(action.path)}
       type="button"
     >
       <div className="flex h-full flex-col gap-5 p-5 sm:gap-6 sm:p-6">
         <div className="flex items-start justify-between gap-3">
-          <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", action.accentClassName)}>
+          <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", action.accentClassName)}>
             <Icon className="h-6 w-6" />
           </div>
           <Badge className="hidden sm:inline-flex" variant="secondary">
@@ -122,7 +122,7 @@ function QuickActionCard({ action, onOpen }: { action: QuickAction; onOpen: (pat
         </div>
 
         <div className="flex items-center justify-between text-sm font-semibold text-[var(--brand-maroon)]">
-          <span className="rounded-full bg-[var(--surface-tint)] px-3 py-1">Tap to open</span>
+          <span className="rounded-lg bg-[var(--surface-tint)] px-3 py-1">Open</span>
           <ArrowRight className="h-4 w-4 shrink-0" />
         </div>
       </div>
@@ -314,7 +314,7 @@ export function Home() {
           }
         }
       } catch {
-        // quiet background polling for a lightweight prototype
+        // Keep background polling quiet so the dashboard does not interrupt active work.
       }
     }, 20000);
 
@@ -344,7 +344,7 @@ export function Home() {
   return (
     <div className="min-h-screen bg-transparent pb-28 sm:pb-0">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <section className="mb-6 overflow-hidden rounded-[1.5rem] border border-[var(--border)] bg-white sm:rounded-[2rem]">
+        <section className="mb-6 overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-sm">
           <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="p-5 sm:p-6 lg:p-8">
               <Badge className="mb-3" variant="secondary">
@@ -378,14 +378,14 @@ export function Home() {
             </div>
 
             <div className="bg-[var(--surface-tint)] p-5 sm:p-6 lg:p-8">
-              <div className="rounded-[1.75rem] bg-[var(--brand-maroon)] p-5 text-white shadow-lg">
+              <div className="rounded-xl bg-[var(--brand-maroon)] p-5 text-white shadow-sm">
                 <p className="text-xs uppercase tracking-[0.18em] text-white/70">How it works</p>
                 <div className="mt-4 space-y-4">
                   {howItWorks.map((item) => {
                     const Icon = item.icon;
                     return (
-                      <div key={item.title} className="flex gap-3 rounded-2xl bg-white/10 p-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                      <div key={item.title} className="flex gap-3 rounded-lg bg-white/10 p-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15">
                           <Icon className="h-5 w-5" />
                         </div>
                         <div>
@@ -449,7 +449,7 @@ export function Home() {
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <h2 className="font-semibold text-[var(--ink)]">Choose what you need</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Start with food delivery, with rides kept as a secondary option.</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Start with food delivery, or choose a campus ride when that fits better.</p>
             </div>
             <Button className="hidden sm:inline-flex" onClick={() => navigate("/request")} variant="ghost">
               Open request form
@@ -504,15 +504,15 @@ export function Home() {
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-white/95 p-3 shadow-[0_-12px_40px_rgba(45,34,39,0.12)] backdrop-blur sm:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-white/95 p-3 shadow-sm sm:hidden">
         <div className="mx-auto grid max-w-md grid-cols-[1fr_1fr_auto] gap-2">
-          <Button aria-label="Request food delivery" className="min-h-12 rounded-2xl" onClick={() => navigate(heroCopy.primaryPath)} size="lg">
+          <Button aria-label="Request food delivery" className="min-h-12 rounded-lg" onClick={() => navigate(heroCopy.primaryPath)} size="lg">
             Food
           </Button>
-          <Button aria-label="Request a ride" className="min-h-12 rounded-2xl" onClick={() => navigate(heroCopy.secondaryPath)} size="lg" variant="secondary">
+          <Button aria-label="Request a ride" className="min-h-12 rounded-lg" onClick={() => navigate(heroCopy.secondaryPath)} size="lg" variant="secondary">
             Ride
           </Button>
-          <Button aria-label="Open GET mobile ordering" className="min-h-12 rounded-2xl px-4" onClick={() => openGetMobile()} size="lg" variant="outline">
+          <Button aria-label="Open GET mobile ordering" className="min-h-12 rounded-lg px-4" onClick={() => openGetMobile()} size="lg" variant="outline">
             GET
           </Button>
         </div>

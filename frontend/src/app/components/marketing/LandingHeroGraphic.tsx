@@ -2,6 +2,9 @@
 // Public landing-page collage graphic.
 // Uses a compact food-and-delivery layout that stays readable on phones.
 
+import { Footprints } from "lucide-react";
+import { UAlbanyMark } from "../brand/UAlbanyMark";
+
 const baseUrl = import.meta.env.BASE_URL;
 
 const restaurantImages = [
@@ -19,20 +22,21 @@ const restaurantImages = [
 
 export function LandingHeroGraphic() {
   return (
-    <div className="relative overflow-hidden rounded-[1.5rem] border border-[var(--border)] bg-[linear-gradient(145deg,#fff8ef_0%,#f6edf7_52%,#f3e8d8_100%)] p-2.5 sm:rounded-[2rem] sm:p-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.75),transparent_38%)]" />
-      <div className="absolute -top-8 -right-10 h-28 w-28 rounded-full bg-[var(--gold-soft)]/70 blur-2xl" />
-      <div className="absolute -bottom-10 -left-6 h-24 w-24 rounded-full bg-[var(--surface-tint)] blur-2xl" />
-
+    <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-white p-2.5 shadow-sm sm:p-4">
       <div className="relative">
-        <div className="mb-2.5 rounded-[1.1rem] bg-[linear-gradient(135deg,#6e2144,#8d436a,#c7a24a)] p-3.5 text-white shadow-sm sm:mb-3 sm:rounded-[1.4rem] sm:p-4">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-white/75 sm:text-xs">CampusConnect</p>
-          <h3 className="mt-1.5 text-lg font-bold leading-tight sm:text-2xl">
-            Campus Center restaurants in one delivery grid
-          </h3>
-          <p className="mt-1.5 text-xs text-white/85 sm:text-sm">
-            Order in GET, send it through CampusConnect, and let another student bring it across campus.
-          </p>
+        <div className="mb-2.5 rounded-xl bg-[linear-gradient(135deg,#46166b_0%,#5f2786_100%)] p-3.5 text-white shadow-sm sm:mb-3 sm:p-4">
+          <div className="flex items-start gap-3">
+            <UAlbanyMark className="h-12 w-12 bg-white text-[var(--brand-maroon)]" compact />
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-white/75 sm:text-xs">CampusConnect</p>
+              <h3 className="mt-1.5 text-lg font-bold leading-tight sm:text-2xl">
+                Campus Center restaurants in one delivery grid
+              </h3>
+              <p className="mt-1.5 text-xs text-white/85 sm:text-sm">
+                Order in GET, send it through CampusConnect, and let another student bring it across campus.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4">
@@ -53,14 +57,14 @@ export function LandingHeroGraphic() {
           ))}
         </div>
 
-        <div className="mt-2.5 rounded-[1rem] bg-white/82 p-3 backdrop-blur sm:absolute sm:right-3 sm:bottom-3 sm:mt-0 sm:max-w-[220px] sm:rounded-[1.35rem] sm:p-3.5">
+        <div className="mt-2.5 rounded-xl border border-[var(--border)] bg-white p-3 shadow-sm sm:absolute sm:right-3 sm:bottom-3 sm:mt-0 sm:max-w-[220px] sm:p-3.5">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-sm font-semibold text-white shadow-sm sm:h-14 sm:w-14">
-              Bike
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--brand-maroon)] text-white shadow-sm sm:h-14 sm:w-14">
+              <Footprints className="h-6 w-6" aria-hidden="true" />
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] sm:text-xs">Pickup to handoff</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Student courier on the way</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Student walker on the way</p>
             </div>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)] sm:mt-2.5 sm:text-sm">

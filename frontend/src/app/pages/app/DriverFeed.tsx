@@ -199,7 +199,7 @@ export function DriverFeed() {
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-[var(--brand-accent)]">
                 <ShieldCheck className="h-6 w-6" />
               </div>
-              <h2 className="mt-4 text-2xl font-bold text-[var(--ink)]">Courier prototype mode</h2>
+              <h2 className="mt-4 text-2xl font-bold text-[var(--ink)]">Courier access</h2>
               <p className="mt-2 text-sm text-[var(--muted)]">
                 You can browse jobs right away. To accept food deliveries, verify your campus email in Profile first.
               </p>

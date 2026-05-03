@@ -1,5 +1,5 @@
 // File purpose:
-// Small browser-notification helpers for the CampusConnect prototype.
+// Small browser-notification helpers for CampusConnect.
 // Keeps permission checks and simple local alerts out of page components.
 
 export function browserNotificationsSupported() {

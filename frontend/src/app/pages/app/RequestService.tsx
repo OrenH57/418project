@@ -73,9 +73,6 @@ function ServiceButton({ active, label, suggestedPrice, onClick }: ServiceButton
       {label === "Food Delivery" ? (
         <p className="mt-2 text-xs text-[var(--muted)]">Best when you already ordered in GET and only need delivery.</p>
       ) : null}
-      {label === "Discount Dollars (Coming Soon)" ? (
-        <p className="mt-2 text-xs text-[var(--muted)]">Incoming feature. Delivery requests are the live flow right now.</p>
-      ) : null}
     </button>
   );
 }

@@ -3,11 +3,12 @@
 // Renders the top navigation, help entry, logout, and common page framing.
 
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bike, CircleHelp, LogOut, Shield, UserRound } from "lucide-react";
+import { CircleHelp, LogOut, Shield, UserRound } from "lucide-react";
 import { QuickRequestButton } from "./QuickRequestButton";
 import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { UAlbanyMark } from "../brand/UAlbanyMark";
 import { getDefaultPath, getStoredView } from "../../lib/viewMode";
 
 export function Layout() {
@@ -35,9 +36,7 @@ export function Layout() {
             onClick={() => navigate(getDefaultPath(preferredView))}
             type="button"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--brand-maroon)] text-white">
-              <Bike className="h-5 w-5" />
-            </div>
+            <UAlbanyMark compact />
             <div>
               <p className="font-semibold text-[var(--ink)]">CampusConnect</p>
               <p className="text-xs text-[var(--muted)]">Campus food delivery</p>
