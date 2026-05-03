@@ -211,7 +211,7 @@ export function Messaging() {
       setIsSending(true);
       await api.sendMessage(token, requestId, text.trim());
       setDraft("");
-      await loadMessages();
+      await loadMessages({ silent: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not send message.");
     } finally {
