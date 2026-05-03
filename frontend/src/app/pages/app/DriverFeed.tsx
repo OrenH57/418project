@@ -113,6 +113,7 @@ export function DriverFeed() {
   const filteredRequests = useMemo(() => {
     return [...requests]
       .filter((request) => request.serviceType !== "discount")
+      .filter((request) => request.status === "open" || (request.status === "accepted" && request.acceptedBy === user?.id))
       .filter((request) => filterType === "all" || request.serviceType === filterType)
       .sort((left, right) => {
         if (sortBy === "payment") {
@@ -123,7 +124,7 @@ export function DriverFeed() {
         }
         return right.timeAgo.localeCompare(left.timeAgo);
       });
-  }, [filterType, requests, sortBy]);
+  }, [filterType, requests, sortBy, user?.id]);
 
   function getTypeIcon(type: string) {
     if (type === "food") return UtensilsCrossed;

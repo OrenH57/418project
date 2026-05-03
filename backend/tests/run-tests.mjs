@@ -28,6 +28,7 @@ const { verifyStripeWebhookPayload } = await import("../lib/payments.mjs");
 const { buildAdminOverview } = await import("../lib/admin.mjs");
 const { handlePaymentsRoute, handleRatingsRoute } = await import("../lib/routeGroups.mjs");
 const { handleRequestRoute } = await import("../routes/requestRoutes.mjs");
+const { listRequestsForUser } = await import("../services/orderService.mjs");
 const {
   IDEMPOTENCY_TTL_MS,
   createIdempotencyExpiry,
@@ -894,6 +895,76 @@ await runTest("expireTimedOutRequests expires undelivered active orders after 10
   assert.equal(data.messages["request-stale-accepted"].length, 1);
   assert.equal(data.messages["request-delivered-accepted"].length, 1);
   assert.equal(expireTimedOutRequests(data, now), false);
+});
+
+await runTest("courier request list hides expired and other-courier accepted jobs", async () => {
+  const auth = {
+    user: { id: "courier-current" },
+    data: {
+      users: [
+        { id: "courier-current", name: "Current Courier" },
+        { id: "courier-other", name: "Other Courier" },
+        { id: "requester-1", name: "Requester One", phone: "518-555-0100" },
+      ],
+      requests: [
+        {
+          id: "request-open",
+          userId: "requester-1",
+          requesterName: "Requester One",
+          serviceType: "food",
+          pickup: "Starbucks",
+          destination: "State Quad",
+          payment: "3.99",
+          status: "open",
+          acceptedBy: null,
+          createdAt: "2026-04-26T13:00:00.000Z",
+          moderationStatus: "clear",
+        },
+        {
+          id: "request-my-accepted",
+          userId: "requester-1",
+          requesterName: "Requester One",
+          serviceType: "food",
+          pickup: "Baba's Pizza",
+          destination: "Dutch Quad",
+          payment: "3.99",
+          status: "accepted",
+          acceptedBy: "courier-current",
+          createdAt: "2026-04-26T12:00:00.000Z",
+          moderationStatus: "clear",
+        },
+        {
+          id: "request-other-accepted",
+          userId: "requester-1",
+          requesterName: "Requester One",
+          serviceType: "food",
+          pickup: "The Corner Deli",
+          destination: "Colonial Quad",
+          payment: "3.99",
+          status: "accepted",
+          acceptedBy: "courier-other",
+          createdAt: "2026-04-26T11:00:00.000Z",
+          moderationStatus: "clear",
+        },
+        {
+          id: "request-expired",
+          userId: "requester-1",
+          requesterName: "Requester One",
+          serviceType: "food",
+          pickup: "Zoca",
+          destination: "Empire Commons",
+          payment: "5.99",
+          status: "expired",
+          acceptedBy: null,
+          createdAt: "2026-04-26T01:00:00.000Z",
+          moderationStatus: "clear",
+        },
+      ],
+    },
+  };
+
+  const requests = listRequestsForUser(auth, "courier");
+  assert.deepEqual(requests.map((request) => request.id), ["request-open", "request-my-accepted"]);
 });
 
 await runTest("decoratePublicCourierRequest hides sensitive order details", async () => {

@@ -132,7 +132,11 @@ export function listRequestsForUser(auth, mode) {
   if (mode === "mine") {
     filtered = filtered.filter((entry) => entry.userId === auth.user.id);
   } else if (mode === "courier") {
-    filtered = filtered.filter((entry) => entry.status === "open" || entry.acceptedBy === auth.user.id);
+    filtered = filtered.filter(
+      (entry) =>
+        entry.status === "open" ||
+        (entry.status === "accepted" && entry.acceptedBy === auth.user.id),
+    );
   } else {
     filtered = filtered.filter((entry) => entry.userId === auth.user.id);
   }

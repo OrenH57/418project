@@ -44,9 +44,15 @@ export async function handleRequestRoute(context) {
   if (request.method === "GET" && url.pathname === "/api/requests") {
     const auth = await requireUser(request, response);
     if (!auth) return true;
+    const freshData = readData ? await readData() : auth.data;
+    const freshAuth = {
+      ...auth,
+      data: freshData,
+      user: freshData.users.find((entry) => entry.id === auth.user.id) || auth.user,
+    };
 
     sendJson(response, 200, {
-      requests: listRequestsForUser(auth, url.searchParams.get("mode") || "all"),
+      requests: listRequestsForUser(freshAuth, url.searchParams.get("mode") || "all"),
     });
     return true;
   }
