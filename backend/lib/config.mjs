@@ -103,6 +103,10 @@ export function getAppUrl(request) {
     .trim();
   const forwardedOrigin = forwardedHost ? normalizeOrigin(`${forwardedProto || "https"}://${forwardedHost}`) : "";
 
+  if (requestOrigin && isLocalOrigin(requestOrigin)) {
+    return withBasePath(requestOrigin, process.env.VITE_BASE_PATH);
+  }
+
   if (configuredOrigin && !(isLocalOrigin(configuredOrigin) && requestOrigin && !isLocalOrigin(requestOrigin))) {
     return configuredAppUrl;
   }

@@ -12,7 +12,7 @@ import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
-import { getDefaultPath, setStoredView } from "../../lib/viewMode";
+import { getDefaultPath, setStoredView, type AppView } from "../../lib/viewMode";
 
 const sideCopy = {
   requester: {
@@ -41,13 +41,24 @@ function getSafeNextPath(value: string | null) {
   return value;
 }
 
+function isPathAllowedForView(path: string, view: "requester" | "courier") {
+  if (!path) return false;
+  if (path.startsWith("/admin")) return false;
+
+  if (view === "courier") {
+    return path.startsWith("/driver-feed") || path.startsWith("/messages/") || path.startsWith("/profile") || path.startsWith("/help");
+  }
+
+  return path.startsWith("/app") || path.startsWith("/request") || path.startsWith("/messages/") || path.startsWith("/profile") || path.startsWith("/help") || path.startsWith("/rate/");
+}
+
 export function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, login, signup, verifyEmail, resendEmailVerification, logout } = useAuth();
   const sideParam = searchParams.get("side");
   const safeNextPath = getSafeNextPath(searchParams.get("next"));
-  const initialEntryView = sideParam === "courier" || safeNextPath.startsWith("/driver-feed") ? "courier" : "requester";
+  const initialEntryView: AppView = sideParam === "courier" || safeNextPath.startsWith("/driver-feed") ? "courier" : "requester";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -60,8 +71,10 @@ export function AuthPage() {
   const [busy, setBusy] = useState(false);
   const authSubmitLockRef = useRef(false);
   const currentSideCopy = sideCopy[entryView];
-  const getPostAuthPath = (nextUser: { role: string }) =>
-    nextUser.role === "admin" ? "/admin" : safeNextPath || getDefaultPath(entryView);
+  const getPostAuthPath = (nextUser: { role: string }, view: AppView = entryView) => {
+    if (nextUser.role === "admin") return "/admin";
+    return isPathAllowedForView(safeNextPath, view) ? safeNextPath : getDefaultPath(view);
+  };
   const hasPendingEmailVerification = Boolean(user && !user.emailVerified);
 
   if (user?.emailVerified) {
@@ -117,7 +130,7 @@ export function AuthPage() {
           return;
         }
         toast.success("Welcome back to CampusConnect.");
-        navigate(getPostAuthPath(nextUser), { replace: true });
+        navigate(getPostAuthPath(nextUser, entryView), { replace: true });
       } else {
         if (entryView === "courier" && !ualbanyIdImage) {
           toast.error("Upload a photo of your UAlbany ID before opening the courier side.");
@@ -153,7 +166,7 @@ export function AuthPage() {
     try {
       const nextUser = await verifyEmail(verificationCode.trim());
       toast.success("Campus email verified.");
-      navigate(getPostAuthPath(nextUser), { replace: true });
+      navigate(getPostAuthPath(nextUser, entryView), { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Email verification failed.");
     } finally {
@@ -199,14 +212,15 @@ export function AuthPage() {
 
     try {
       const { user: nextUser, verification } = await login(account.email, account.password);
-      setStoredView(account.role === "Courier" ? "courier" : "requester");
+      const nextView = account.role === "Courier" ? "courier" : "requester";
+      setStoredView(nextView);
       if (verification?.required || !nextUser.emailVerified) {
         setVerificationPreviewCode(verification?.previewCode || "");
         toast.success("Enter the verification code sent to your campus email.");
         return;
       }
       toast.success(`Opening ${account.role.toLowerCase()} workspace.`);
-      navigate(getPostAuthPath(nextUser), { replace: true });
+      navigate(getPostAuthPath(nextUser, nextView), { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not open this workspace.");
     } finally {

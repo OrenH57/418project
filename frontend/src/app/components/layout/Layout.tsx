@@ -82,7 +82,7 @@ export function Layout() {
               className="rounded-full px-3"
               onClick={() => {
                 logout();
-                navigate("/");
+                window.location.replace("/");
               }}
               size="sm"
               variant="outline"

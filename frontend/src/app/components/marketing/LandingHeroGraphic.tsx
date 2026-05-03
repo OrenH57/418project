@@ -26,7 +26,7 @@ export function LandingHeroGraphic() {
       <div className="relative">
         <div className="mb-2.5 rounded-xl bg-[linear-gradient(135deg,#46166b_0%,#5f2786_100%)] p-3.5 text-white shadow-sm sm:mb-3 sm:p-4">
           <div className="flex items-start gap-3">
-            <UAlbanyMark className="h-12 w-12 bg-white text-[var(--brand-maroon)]" compact />
+            <UAlbanyMark className="h-12 w-12 border border-white/20 bg-white/12 text-white ring-white/20" compact />
             <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-white/75 sm:text-xs">CampusConnect</p>
               <h3 className="mt-1.5 text-lg font-bold leading-tight sm:text-2xl">

@@ -1089,6 +1089,24 @@ await runTest("app URL preserves configured deployment path for Stripe redirects
   }
 });
 
+await runTest("app URL prefers local browser origin for Stripe redirects", async () => {
+  const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
+  process.env.PUBLIC_APP_URL = "http://127.0.0.1:4173";
+
+  try {
+    assert.equal(
+      getAppUrl({ headers: { origin: "http://127.0.0.1:5173" } }),
+      "http://127.0.0.1:5173",
+    );
+  } finally {
+    if (previousPublicAppUrl === undefined) {
+      delete process.env.PUBLIC_APP_URL;
+    } else {
+      process.env.PUBLIC_APP_URL = previousPublicAppUrl;
+    }
+  }
+});
+
 await runTest("app URL applies Vite base path when PUBLIC_APP_URL is not set", async () => {
   const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
   const previousBasePath = process.env.VITE_BASE_PATH;
