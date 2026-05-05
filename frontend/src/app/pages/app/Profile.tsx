@@ -38,6 +38,12 @@ type ProfileData = {
   acceptedRequests: number;
 };
 
+type ProfileUpdateInput = Parameters<typeof api.updateProfile>[1];
+
+function isPreviewableImage(value = "") {
+  return /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(value.trim());
+}
+
 export function Profile() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -48,6 +54,19 @@ export function Profile() {
   const [bio, setBio] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [ualbanyIdImage, setUalbanyIdImage] = useState("");
+
+  function buildProfileUpdateInput(
+    nextProfile: Pick<ProfileData, "courierMode" | "notificationsEnabled" | "courierOnline">,
+    nextBio = bio,
+  ): ProfileUpdateInput {
+    return {
+      courierMode: nextProfile.courierMode,
+      bio: nextBio,
+      ...(isPreviewableImage(ualbanyIdImage) ? { ualbanyIdImage } : {}),
+      notificationsEnabled: nextProfile.notificationsEnabled,
+      courierOnline: nextProfile.courierOnline,
+    };
+  }
 
   useEffect(() => {
     async function loadProfile() {
@@ -113,11 +132,8 @@ export function Profile() {
 
       try {
         const response = await api.updateProfile(token, {
-          courierMode: profile.courierMode,
-          bio,
+          ...buildProfileUpdateInput(profile),
           ualbanyIdImage: nextImage,
-          notificationsEnabled: profile.notificationsEnabled,
-          courierOnline: profile.courierOnline,
         });
 
         setProfile((current) =>
@@ -147,11 +163,7 @@ export function Profile() {
 
     try {
       const response = await api.updateProfile(token, {
-        courierMode: profile.courierMode,
-        bio,
-        ualbanyIdImage,
-        notificationsEnabled: profile.notificationsEnabled,
-        courierOnline: profile.courierOnline,
+        ...buildProfileUpdateInput(profile),
       });
       setProfile((current) =>
         current
@@ -211,11 +223,7 @@ export function Profile() {
 
     try {
       const response = await api.updateProfile(token, {
-        courierMode: nextProfile.courierMode,
-        bio,
-        ualbanyIdImage,
-        notificationsEnabled: nextProfile.notificationsEnabled,
-        courierOnline: nextProfile.courierOnline,
+        ...buildProfileUpdateInput(nextProfile),
       });
       setProfile((current) => (current ? { ...current, ...nextValues } : current));
       updateLocalUser(response.user);
@@ -270,6 +278,7 @@ export function Profile() {
   );
   const foodReady = Boolean(profile?.foodSafetyVerified);
   const browserSupported = browserNotificationsSupported();
+  const hasPreviewableIdImage = isPreviewableImage(ualbanyIdImage);
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -407,12 +416,16 @@ export function Profile() {
                       type="file"
                     />
                   </div>
-                  {ualbanyIdImage ? (
+                  {hasPreviewableIdImage ? (
                     <img
                       alt="Saved UAlbany ID preview"
                       className="mt-3 max-h-44 rounded-xl border border-[var(--border)] object-cover"
                       src={ualbanyIdImage}
                     />
+                  ) : courierReadyNow ? (
+                    <p className="mt-3 rounded-xl border border-[var(--border)] bg-white p-3 text-sm text-[var(--muted)]">
+                      UAlbany ID is saved. Upload a new photo to replace the file on record.
+                    </p>
                   ) : null}
                 </div>
 

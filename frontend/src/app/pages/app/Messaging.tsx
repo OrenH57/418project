@@ -25,9 +25,11 @@ import { api, type MessageRecord, type RequestRecord } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
 import { formatPaymentTotal, parseOptionalTip } from "../../lib/campusConfig";
+import { getDefaultPath, getStoredView } from "../../lib/viewMode";
 
 const requesterQuickReplies = ["I got the ready email", "I'm outside", "Payment is done", "Thanks!"];
 const courierQuickReplies = ["On my way", "At Campus Center", "Food picked up", "I'm outside", "Delivered"];
+const screenshotOnlyOrderNote = "GET order screenshot uploaded.";
 
 function getStatusLabel(status?: string) {
   if (status === "completed") return "Completed";
@@ -53,6 +55,13 @@ function isSystemMessage(message: MessageRecord) {
     "Order completed",
     "cancelled this order",
   ].some((snippet) => message.text.includes(snippet));
+}
+
+function getTypedOrderDetails(notes = "") {
+  return notes
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && line !== screenshotOnlyOrderNote);
 }
 
 export function Messaging() {
@@ -408,6 +417,8 @@ export function Messaging() {
   const quickReplies = isRequester ? requesterQuickReplies : courierQuickReplies;
   const statusLabel = getStatusLabel(requestRecord?.status);
   const paymentLabel = getPaymentLabel(paymentStatus);
+  const typedOrderDetails = useMemo(() => getTypedOrderDetails(requestRecord?.notes), [requestRecord?.notes]);
+  const chatBackPath = isRequester ? "/app" : isAssignedCourier ? "/driver-feed" : getDefaultPath(getStoredView());
   const paymentTone =
     paymentStatus === "paid"
       ? "border-emerald-200 bg-emerald-50 text-emerald-900"
@@ -427,7 +438,7 @@ export function Messaging() {
     <div className="min-h-screen bg-transparent">
       <div className="mx-auto grid max-w-6xl gap-5 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="min-w-0 space-y-4">
-          <Button className="-ml-3 w-fit" onClick={() => navigate(-1)} variant="ghost">
+          <Button className="-ml-3 w-fit" onClick={() => navigate(chatBackPath, { replace: true })} variant="ghost">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -728,6 +739,19 @@ export function Messaging() {
                 <CardContent className="p-4 text-sm">
                   <p className="font-medium text-[var(--ink)]">GET ready estimate</p>
                   <p className="mt-1 text-[var(--muted)]">{requestRecord.orderEta}</p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {!isRequester && typedOrderDetails.length ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Order Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm text-[var(--ink)]">
+                  {typedOrderDetails.map((detail) => (
+                    <p key={detail}>{detail}</p>
+                  ))}
                 </CardContent>
               </Card>
             ) : null}
