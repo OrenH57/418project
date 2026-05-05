@@ -7,12 +7,14 @@ type SelectContextValue = {
   onValueChange: (value: string) => void;
   items: Array<{ value: string; label: string }>;
   placeholder: string;
+  disabled: boolean;
 };
 
 const SelectContext = createContext<SelectContextValue | null>(null);
 
 type SelectProps = {
   children: ReactNode;
+  disabled?: boolean;
   value: string;
   onValueChange: (value: string) => void;
 };
@@ -70,12 +72,12 @@ function findPlaceholder(children: ReactNode): string {
   return placeholder;
 }
 
-export function Select({ children, value, onValueChange }: SelectProps) {
+export function Select({ children, disabled = false, value, onValueChange }: SelectProps) {
   const items = extractItems(children);
   const placeholder = findPlaceholder(children);
   const context = useMemo(
-    () => ({ value, onValueChange, items, placeholder }),
-    [items, onValueChange, placeholder, value],
+    () => ({ value, onValueChange, items, placeholder, disabled }),
+    [disabled, items, onValueChange, placeholder, value],
   );
   return <SelectContext.Provider value={context}>{children}</SelectContext.Provider>;
 }
@@ -84,7 +86,7 @@ type SelectTriggerProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" 
   children: ReactNode;
 };
 
-export function SelectTrigger({ children, className, ...props }: SelectTriggerProps) {
+export function SelectTrigger({ children, className, disabled, ...props }: SelectTriggerProps) {
   const context = useContext(SelectContext);
   if (!context) throw new Error("SelectTrigger must be used inside Select");
 
@@ -98,6 +100,7 @@ export function SelectTrigger({ children, className, ...props }: SelectTriggerPr
       value={context.value}
       onChange={(event) => context.onValueChange(event.target.value)}
       {...props}
+      disabled={context.disabled || disabled}
     >
       {context.placeholder ? (
         <option value="" disabled>

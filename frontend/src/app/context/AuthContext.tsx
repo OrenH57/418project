@@ -18,6 +18,25 @@ const TOKEN_KEY = "campus-connect-token";
 const USER_KEY = "campus-connect-user";
 const REQUEST_IDEMPOTENCY_KEY = "campus-connect-request-idempotency-key";
 
+function getStoredToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function getStoredUser(token: string | null) {
+  const raw = token ? localStorage.getItem(USER_KEY) : null;
+  if (!raw) {
+    localStorage.removeItem(USER_KEY);
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as User;
+  } catch {
+    localStorage.removeItem(USER_KEY);
+    return null;
+  }
+}
+
 function clearAppSessionStorage() {
   for (const key of Object.keys(sessionStorage)) {
     if (key.startsWith("campus-connect-")) {
@@ -50,18 +69,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 type AuthVerification = { required: boolean; delivered: boolean; previewCode: string };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const raw = localStorage.getItem(USER_KEY);
-    if (!raw) return null;
-
-    try {
-      return JSON.parse(raw) as User;
-    } catch {
-      localStorage.removeItem(USER_KEY);
-      return null;
-    }
-  });
-  const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
+  const initialToken = getStoredToken();
+  const [user, setUser] = useState<User | null>(() => getStoredUser(initialToken));
+  const [token, setToken] = useState<string | null>(initialToken);
   const [loading, setLoading] = useState(true);
   const authGenerationRef = useRef(0);
   const tokenRef = useRef<string | null>(token);
@@ -125,6 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function loadSession() {
       if (!token) {
+        clearStoredSession({ clearView: true });
+        setUser(null);
         setLoading(false);
         return;
       }

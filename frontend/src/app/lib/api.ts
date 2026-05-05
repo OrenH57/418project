@@ -6,13 +6,35 @@ function isLocalApiBase(value: string) {
   return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api\/?$/i.test(value);
 }
 
+function normalizeApiBase(value: string) {
+  const trimmed = value.trim().replace(/\/$/, "");
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("/")) {
+    return trimmed.replace(/\/$/, "");
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const normalizedPath = url.pathname.replace(/\/+$/, "");
+    if (!normalizedPath || normalizedPath === "/") {
+      url.pathname = "/api";
+    } else if (!normalizedPath.endsWith("/api")) {
+      url.pathname = `${normalizedPath}/api`;
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed;
+  }
+}
+
 function getApiBase() {
   const configured = String(import.meta.env.VITE_API_BASE_URL || "").trim();
   const isBrowserLocal =
     typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 
   if (configured && (!isLocalApiBase(configured) || isBrowserLocal)) {
-    return configured.replace(/\/$/, "");
+    return normalizeApiBase(configured);
   }
 
   if (
