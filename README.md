@@ -7,7 +7,7 @@ CampusConnect is a UAlbany-focused prototype for Campus Center food delivery, wi
 This project is now organized with clearer frontend and backend boundaries:
 
 ```text
-CampusConenct/
+CampusConnect/
 ├── frontend/
 │   ├── public/              # Static frontend assets
 │   └── src/
