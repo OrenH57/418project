@@ -2,9 +2,7 @@
 
 CampusConnect is a UAlbany-focused prototype for Campus Center food delivery, with ride help kept as a secondary flow. Students order food in GET first, request delivery in CampusConnect, pay the delivery fee, and coordinate the handoff with a student courier through in-app messaging.
 
-## Project Structure
 
-This project is now organized with clearer frontend and backend boundaries:
 
 ```text
 CampusConnect/
@@ -90,12 +88,7 @@ The backend reads both `.env` and `.env.local`.
 - Courier: `marcus.hall@albany.edu` / `demo1234`
 - Admin: `jordan.reyes@albany.edu` / `demo1234`
 
-## Notes For The Team
-
-- Do not share `.env.local`
-- Do not commit `backend/data/app-data.json`
-- Generated or local-only files like `dist`, `.npm-cache`, `*.log`, and `*.tsbuildinfo` should stay out of Git
 
 ## Hosting Note
 
-GitHub Pages can host the frontend, but not the backend. If you want the full app online visit uacampusconnect.vercel.app
+GitHub Pages can host the frontend, but not the backend. If you want the full app online uacampusconnect.vercel.app
