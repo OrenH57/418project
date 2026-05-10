@@ -98,4 +98,4 @@ The backend reads both `.env` and `.env.local`.
 
 ## Hosting Note
 
-GitHub Pages can host the frontend, but not the backend. If you want the full app online, use a frontend host like GitHub Pages or Vercel and a backend host like Render or Railway.
+GitHub Pages can host the frontend, but not the backend. If you want the full app online visit uacampusconnect.vercel.app
