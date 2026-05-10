@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { api, type RequestRecord } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "../../components/ui/sonner";
-import { getRequestZoneLabel } from "../../lib/campusMap";
+import { getRequestZoneLabel } from "../../lib/requestZones";
 import { getStoredView } from "../../lib/viewMode";
 import { canSendBrowserNotifications, sendBrowserNotification } from "../../lib/notifications";
 
