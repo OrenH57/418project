@@ -725,20 +725,22 @@ export function Messaging() {
             ) : null}
 
             <Card>
-              <CardContent className="space-y-3 p-4 text-sm text-[var(--muted)]">
-                <div className="flex items-center gap-2 font-medium text-[var(--ink)]">
-                  <Shield className="h-4 w-4 text-green-700" />
-                  Safety reminder
+              <CardContent className="p-5 text-sm text-[var(--muted)]">
+                <div className="flex items-center gap-3 font-medium leading-6 text-[var(--ink)]">
+                  <Shield className="h-4 w-4 shrink-0 text-green-700" />
+                  <span>Safety reminder</span>
                 </div>
-                <p>Meet in public campus spaces, confirm the pickup name, and keep communication in this chat.</p>
+                <p className="mt-3 leading-6">
+                  Meet in public campus spaces, confirm the pickup name, and keep communication in this chat.
+                </p>
               </CardContent>
             </Card>
 
             {requestRecord?.orderEta ? (
               <Card>
-                <CardContent className="p-4 text-sm">
-                  <p className="font-medium text-[var(--ink)]">GET ready estimate</p>
-                  <p className="mt-1 text-[var(--muted)]">{requestRecord.orderEta}</p>
+                <CardContent className="p-5 text-sm">
+                  <p className="font-medium leading-6 text-[var(--ink)]">GET ready estimate</p>
+                  <p className="mt-2 leading-6 text-[var(--muted)]">{requestRecord.orderEta}</p>
                 </CardContent>
               </Card>
             ) : null}
